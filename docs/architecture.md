@@ -1064,12 +1064,17 @@ N1–N3 的触发条件是「受支持 minor 版本数达到 2」，不是日期
 | `fixture-both` | `scenarios/fixture-both.json`（两侧都装） | 绿，`PASS=5 FAIL=0` |
 | `fixture-client-missing` | `scenarios/fixture-client-missing.json`（只装服务端） | 绿，`PASS=4 FAIL=0` |
 | `fixture-server-missing` | `scenarios/fixture-server-missing.json`（只装客户端） | 绿，`PASS=5 FAIL=0` |
+| `cross-fabric-srv-forge-cli` | `scenarios/capabilities.json`（fabric 服 + forge 客） | 绿，`PASS=14 FAIL=0` |
+| `cross-forge-srv-fabric-cli` | `scenarios/capabilities.json`（forge 服 + fabric 客） | 绿，`PASS=14 FAIL=0` |
 
-三条合计 **3/3 符合预期**，取证 `tmp\matrix-fixtures`（每个用例子目录里 `summary.md` / `results.json` /
+前三条合计 **3/3 符合预期**，取证 `tmp\matrix-fixtures`（每个用例子目录里 `summary.md` / `results.json` /
 `server.out` / `client.out`，另有 `install-*.log` / `uninstall-*.log` 记录这一轮装了什么、卸了什么）；
 跑完两端 `mods\` 回到基线（`fabric-api` / `mcdev_probe` / `pairedportals`），没有残留清单文件。
-反例也实跑过（`tmp\matrix-negative`）：把 `expectFail` 写反 → 「意外变绿（期望失败）」；jar 路径写错 →
-「跑挂」且下一条不再受影响。
+
+同一个场景**换加载器**也跑通了：`cross-fc`（fabric 服 + forge 客）与 `cross-cf`（forge 服 + fabric 客）各
+`PASS=14 FAIL=0`，两条 **2/2 符合预期**（`tmp\matrix-cross`）—— 说明「用例 × 实例」这一层与加载器无关，
+换的只是实例登记里的 `loader` / `client.loader`。反例也实跑过（`tmp\matrix-negative`）：把 `expectFail` 写反 →
+「意外变绿（期望失败）」；jar 路径写错 → 「跑挂」且下一条不再受影响。
 
 **踩到这个坑值得记一笔**：`devrun-matrix.ps1` 一开始把用例数组赋给局部变量 `$cases`，而参数是
 `[string]$Cases` —— PowerShell 的变量名大小写不敏感，**参数上的类型约束会传染给同名局部变量**，

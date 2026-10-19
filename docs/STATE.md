@@ -506,3 +506,5 @@ Gradle（同上或 `systemProp.*`）、外部客户端实例（启动器 JVM 参
 > 反例（期望写反 → 「意外变绿」、jar 不存在 → 「跑挂」并继续）在 `tmp\matrix-negative`；跑完两端 `mods\` 回到基线。
 > 踩坑记录：参数 `[string]$Cases` 的类型约束会传染给同名（大小写不敏感）局部变量，`$cases = @(...)` 被静默转成
 > 两个空格 —— 参数名与局部变量名不要只靠大小写区分（向导里的 `$Mode` 是同一个坑）。
+> 同一个场景换加载器也跑通了：`cross-fc`（fabric 服 + forge 客）与 `cross-cf`（forge 服 + fabric 客）各
+> `PASS=14 FAIL=0`，两条 **2/2 符合预期**（`tmp\matrix-cross`）——「用例 × 实例」这层与加载器无关。
