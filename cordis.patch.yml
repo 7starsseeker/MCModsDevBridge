@@ -4,7 +4,7 @@
 # entry 插进 profile 树。插件市场只收「package.json 里声明了 `dsh.bundle` 且带本文件」的包。
 #
 # 两条硬规则（写错会在开机解析阶段就失败，症状是启动即报错，不是功能不好用）：
-#   · `name` 必须与 package.json 的 `name` **完全一致**（MCModsDevBridge，与 package.json 的 name 一致）；
+#   · `name` 必须与 package.json 的 `name` **完全一致**（`mcmodsdevbridge`，与 package.json 的 name 逐字一致）；
 #   · `id` 是 Cordis 插件 id，等于 dsh.mjs 的 `export const name`（mcdev-devrun）。
 #
 # 这里没有需要覆写的配置：插件只是个薄包装，编排逻辑全在包内的 `scripts/devrun.ps1`。
@@ -12,4 +12,4 @@
 # scripts/setup-wizard.ps1 或 scripts/register-instance.ps1 现场生成 —— 不进这个文件，也不进仓库。
 - insert:
     - id: mcdev-devrun
-      name: 'MCModsDevBridge'
+      name: 'mcmodsdevbridge'

@@ -15,6 +15,16 @@
 > 自检场景 `scenarios/capabilities.json` 在 **Fabric / Forge / NeoForge 三家各实测 12/12 PASS**。G2（服务端
 > `/player/state` 加 `dimension`）按需求方口径**不做**。
 >
+> **2026-10-20 04:20 增补（包名全小写；主文档英文 + 中文镜像 + 徽章）**：`package.json` 的 `name` 从
+> `MCModsDevBridge` 改成 `mcmodsdevbridge`（npm 的 registry 不接受大写字母，`npm publish` 会被拒；
+> `dsh plugin add github:…` 与市场收录不受影响，但名字必须逐字一致），根 `cordis.patch.yml` 的 `name` 同步。
+> `README.md` 改成**英文主文档**（照 `dsh-jev-guard` / `dsh-fact-check` 的做法：`README.md` 英文 +
+> `README.zh-CN.md` 中文镜像，顶部一行语言互链，两份同一个 commit 改），中文原文原封不动搬进
+> `README.zh-CN.md`；两份都挂了同一组徽章（Awesome DSH Plugin / Apache-2.0 / node ≥20 / DSH plugin /
+> `dsh-plugin` topic / Windows / Minecraft 26.3 / Fabric·Forge·NeoForge / Java 25 / skills 11 /
+> selftest PASS / version tag / stars / powered_by-dsh）。`package.json` 的 `files` 补进
+> `README.zh-CN.md`：`npm pack` 现在 **65 文件 / 795 KB**。`selftest.mjs` 里
+> 「patch 的 name 等于 package.json 的 name」是动态比较，改名后仍 PASS。
 > **2026-10-20 00:40 增补（独立客户端 + 部署范围）**：devrun 现在能起**没有 gradle 工程**的客户端 ——
 > `scripts/lib/Launch.ps1` 读启动器合并后的 `versions\<版本>\<版本>.json`，按 `rules` 过滤库、展开 `${...}`、
 > 拼 classpath 与参数，**不下载任何东西**；`client.mode` 四态 `gradle / standalone / external / none`。
