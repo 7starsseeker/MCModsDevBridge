@@ -1,0 +1,44 @@
+{
+  "name": "server-only",
+  "description": "只有服务端的环境（无客户端、无玩家）：用 /command 与观察类路由证明探针能观察世界；并断言「无人在线时动作类路由回 404 PLAYER_NOT_FOUND」这条契约。适合 side=server 的实例登记。",
+  "steps": [
+    {
+      "id": "server-status",
+      "target": "server",
+      "method": "GET",
+      "path": "/status",
+      "expect": { "status": 200, "json": { "data.side": "server", "data.actionBackend": "server" } }
+    },
+    {
+      "id": "server-command-forceload",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "forceload add 0 0" },
+      "expect": { "status": 200 }
+    },
+    {
+      "id": "server-command-setblock",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "setblock 0 64 0 minecraft:stone" },
+      "expect": { "status": 200 }
+    },
+    {
+      "id": "server-world-block",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=0&y=64&z=0",
+      "expect": { "status": 200, "json": { "data.block": "minecraft:stone" } }
+    },
+    {
+      "id": "loud-failure-no-player",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/gamemode",
+      "body": { "mode": "creative" },
+      "expect": { "status": 404, "json": { "error.code": "PLAYER_NOT_FOUND" } }
+    }
+  ]
+}

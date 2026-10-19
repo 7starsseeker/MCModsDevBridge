@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "mcdev_probe",
+  "version": "${version}",
+  "name": "MCDev Probe",
+  "description": "MC 26.3 模组开发探针（开发期外部组件，独立 mod；服务端观察 + 客户端动作驱动）。",
+  "authors": [
+    "MCDev"
+  ],
+  "license": "All Rights Reserved",
+  "icon": "assets/mcdev_probe/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "com.mcdev.probe.fabric.McdevProbeClient"
+    ],
+    "server": [
+      "com.mcdev.probe.fabric.McdevProbeFabric"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

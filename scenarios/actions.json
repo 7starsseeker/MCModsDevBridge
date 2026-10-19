@@ -1,0 +1,139 @@
+{
+  "name": "actions",
+  "description": "动作层端到端：先用服务端命令自建场景（forceload + setblock + 走路平台），再用服务端九个动作里的四个改变世界并回读；玩家相关引用一律 {{player}}，不写死名字（Fabric 每次启动名字都变）",
+  "steps": [
+    {
+      "id": "provision-forceload",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "forceload add -20 -90 20 -70" },
+      "expect": { "status": 200, "json": { "ok": true } }
+    },
+    {
+      "id": "provision-stone",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "setblock 11 72 -79 minecraft:stone" },
+      "expect": { "status": 200, "json": { "ok": true } }
+    },
+    {
+      "id": "read-back-stone",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=11&y=72&z=-79",
+      "expect": { "status": 200, "json": { "data.block": "minecraft:stone" } }
+    },
+    {
+      "id": "gamemode-creative",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/gamemode",
+      "body": { "mode": "creative" },
+      "expect": { "status": 200, "json": { "data.applied": true } }
+    },
+    {
+      "id": "server-mine",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/mine",
+      "body": { "pos": [11, 72, -79], "face": "east" },
+      "expect": { "status": 200, "json": { "data.broken": true } }
+    },
+    {
+      "id": "read-back-air",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=11&y=72&z=-79",
+      "expect": { "status": 200, "json": { "data.block": "minecraft:air" } }
+    },
+    {
+      "id": "inventory-clear",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/inventory",
+      "body": { "op": "clear" },
+      "expect": { "status": 200, "json": { "data.op": "clear" } }
+    },
+    {
+      "id": "give-stone-to-hotbar0",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/inventory",
+      "body": { "op": "give", "item": "minecraft:stone", "count": 8, "slot": 0, "select": true },
+      "expect": { "status": 200, "json": { "data.added": true, "data.selectedSlot": 0, "data.item": "minecraft:stone" } }
+    },
+    {
+      "id": "provision-place-anchor",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "setblock 13 71 -79 minecraft:stone" },
+      "expect": { "status": 200, "json": { "ok": true } }
+    },
+    {
+      "id": "read-back-anchor",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=13&y=71&z=-79",
+      "expect": { "status": 200, "json": { "data.block": "minecraft:stone" } }
+    },
+    {
+      "id": "provision-place-target-air",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "setblock 13 72 -79 minecraft:air" },
+      "expect": { "status": 200, "json": { "ok": true } }
+    },
+    {
+      "id": "server-place",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/place",
+      "body": { "pos": [13, 71, -79], "face": "up" },
+      "expect": { "status": 200, "json": { "data.changed": true, "data.blockBefore": "minecraft:air" } }
+    },
+    {
+      "id": "read-back-placed",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=13&y=72&z=-79",
+      "expect": { "status": 200, "json": { "data.block": "minecraft:stone" } }
+    },
+    {
+      "id": "walk-platform",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "fill -2 80 -2 2 80 2 minecraft:stone" },
+      "expect": { "status": 200, "json": { "ok": true } }
+    },
+    {
+      "id": "walk-teleport-to-platform",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "tp {{player}} 0.5 81 0.5" },
+      "expect": { "status": 200, "json": { "ok": true } }
+    },
+    {
+      "id": "client-walk",
+      "target": "client",
+      "method": "POST",
+      "path": "/action/move",
+      "body": { "mode": "walk", "durationMs": 400 },
+      "waitMs": 900,
+      "expect": { "status": 200, "json": { "data.moved": true } }
+    },
+    {
+      "id": "loud-failure-unknown-gamemode",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/gamemode",
+      "body": { "mode": "nonsense" },
+      "expect": { "status": 400, "json": { "error.code": "BAD_REQUEST" } }
+    }
+  ]
+}

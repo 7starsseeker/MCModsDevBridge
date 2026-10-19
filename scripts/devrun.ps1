@@ -1,0 +1,602 @@
+<#
+.SYNOPSIS
+    端到端编排 v1 —— 一条命令跑完「准备 → 起服 → 起客户端 → 连接 → 操作场景 → 取证 → 收尾」。
+
+.DESCRIPTION
+    这是 P4 剩余项「DSH 插件层六步编排」的可执行内核。六步的顺序和每一步的失败判据都来自
+    前面几段真机踩坑（见 docs/p4a-action-layer-record.md §13.5 / §14.9）：
+
+      1) 准备：把探针 jar（和 -Mods 指定的被测 mod）放进测试服 mods/，清掉旧日志，抢占检查端口
+      2) 起服：Start-Process 脱离拉起，轮询 /status 直到就绪（不要用管道接启动脚本的 stdout）
+      3) 起客户端：写内层 ps1（JAVA_HOME/代理/-Dmcdev.probe.*），Start-Process 拉起 gradlew runClient
+      4) 连接：POST /connect?host&port=...（注意 /connect 只认 query，不认 body），轮询 /status.player
+      5) 操作：按 scenario json 逐条打端点，断言 status 与 json 路径
+      6) 取证 + 收尾：results.json + summary.md（含两侧日志尾巴），停客户端与服，检查端口释放
+
+    与 tmp\p4a-*.ps1 的关系：那些是逐个环节的手工脚本（也是本脚本的代码来源），本脚本把它们
+    串成一条可复用流水线；两者并存，tmp 的保留作为排障工具。
+
+.PARAMETER Family
+    要跑哪一家：fabric / forge / neoforge，或 all（矩阵：三家串行各跑一遍并汇总）。
+    all 模式不接受 -EvidenceDir / -KeepRunning：每家要独占端口、各自 finally 收尾。
+
+.PARAMETER Scenario
+    场景文件（json）。结构：
+        {
+          "name": "smoke",
+          "steps": [
+            { "id": "walk", "target": "client", "method": "POST", "path": "/action/move",
+              "body": { "mode": "walk", "durationMs": 400 },
+              "expect": { "status": 200, "json": { "moved": true } } }
+          ]
+        }
+    target：server（服务端探针）或 client（客户端探针）。expect.json 用点号路径，值按
+    「字符串化后相等」比较（布尔/数字同样适用），这样 `true` 与 `"true"` 不会互相误判。
+
+.PARAMETER Mods
+    额外要塞进测试服 mods/ 的被测 mod jar 路径（PairedPortals 那类）。会先按文件名去重再复制。
+
+.PARAMETER EvidenceDir
+    取证输出目录，默认 tmp\devrun-<family>-<yyyyMMdd-HHmmss>。
+
+.PARAMETER KeepRunning
+    跑完不收尾（留服和客户端给人工接手排障）。
+
+.EXAMPLE
+    pwsh -NoProfile -File scripts\devrun.ps1 -Family fabric -Scenario scenarios\smoke.json
+
+.NOTES
+    前置：lab\<family> 已经 build 过（脚本会复制 lab\<family>\build\libs\mcdev_probe-*.jar），
+    java.exe 按 -JavaExe → $env:JAVA_HOME → PATH 解析（scripts\lib\Env.ps1）；网络需要代理时由本脚本的
+    JAVA_TOOL_OPTIONS 负责（-Proxy / 环境变量 / Windows 系统代理）。
+#>
+[CmdletBinding()]
+param(
+    [ValidateSet('fabric', 'forge', 'neoforge', 'all')]
+    [string]$Family = 'fabric',
+
+    # 实例名（instances\<名字>.json）或直接给 json 路径。**发布决策（用户 2026-10-20）**：
+    # 套件不带任何客户端/服务器端，实例由使用者自备并登记；-Family 只是「按加载器找同名登记」的简写。
+    [string]$Instance,
+    # 显式覆盖（套件用户手上没有本仓 lab 工程）：java.exe 完整路径、HTTP 代理。
+    # 默认从 JAVA_HOME/PATH、HTTPS_PROXY/系统代理解析，见 scripts\lib\Env.ps1。
+    [string]$JavaExe,
+    [string]$Proxy,
+    [switch]$NoProxy,
+
+    # 明确指定探针 jar：套件使用者手上只有 dist 里的 jar、没有 lab 工程时用这个。
+    [string]$ProbeJar,
+
+    [string]$Scenario = 'scenarios\smoke.json',
+
+    [string[]]$Mods = @(),
+
+    [string]$EvidenceDir,
+
+    [switch]$KeepRunning,
+    # 只解析登记并打印计划（端口/目录/探针 jar/场景要求），**不起服**。安装向导用它自检。
+    [switch]$PreflightOnly,
+
+    [int]$ServerTimeoutSec = 240,
+    [int]$ClientTimeoutSec = 300,
+    [int]$ConnectTimeoutSec = 90
+)
+
+$ErrorActionPreference = 'Stop'
+$Root = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'lib\Env.ps1')
+$Token = 'mcdev'
+$Headers = @{ 'X-Mcdev-Token' = $Token }
+
+# ---- 矩阵模式：三家各跑一遍（客户端探针端口三家共用 39002，所以只能串行）----
+# 用「重新起一个本脚本进程」而不是函数递归：每家都要独占端口、自己的 finally 收尾，
+# 子进程跑挂了也不会污染下一家的状态。聚合结果只认各自 summary.md 里的 SUMMARY 行。
+if ($Family -eq 'all') {
+    if ($PSBoundParameters.ContainsKey('EvidenceDir')) { throw '-Family all 不接受 -EvidenceDir（每家自建取证目录）' }
+    if ($KeepRunning) { throw '-Family all 不接受 -KeepRunning（矩阵跑完必须收尾，否则下一家端口被占）' }
+    $matrix = New-Object System.Collections.ArrayList
+    $allPass = $true
+    foreach ($f in 'fabric', 'forge', 'neoforge') {
+        Write-Host ("[{0}] ===== 矩阵 {1} =====" -f (Get-Date -Format 'HH:mm:ss'), $f)
+        $childArgs = @('-NoProfile', '-File', $PSCommandPath, '-Family', $f, '-Scenario', $Scenario)
+        if ($Mods.Count -gt 0) { $childArgs += @('-Mods', ($Mods -join ',')) }
+        & pwsh @childArgs
+        $code = $LASTEXITCODE
+        $dir = Get-ChildItem (Join-Path $Root 'tmp') -Directory -Filter "devrun-$f-*" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        $summary = if ($dir) { (Select-String -Path (Join-Path $dir.FullName 'summary.md') -Pattern 'PASS=\d+ FAIL=\d+ total=\d+' -ErrorAction SilentlyContinue |
+                Select-Object -First 1).Matches.Value } else { 'n/a' }
+        if ($code -ne 0 -or -not $summary -or $summary -notmatch 'FAIL=0') { $allPass = $false }
+        $null = $matrix.Add([pscustomobject]@{ family = $f; exit = $code; summary = $summary
+                evidence = if ($dir) { $dir.FullName } else { '-' } })
+    }
+    Write-Host ''
+    $matrix | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+    if (-not $allPass) { Write-Host '矩阵结论：有失败'; exit 1 }
+    Write-Host '矩阵结论：三家全绿'
+    exit 0
+}
+
+# ---- 实例解析（发布决策：套件不带客户端/服务器端，实例自备并登记）----------------
+# 登记文件：instances\<名字>.json（字段见 instances\fabric.json 与 docs\deployment-topology.md）。
+# 解析顺序：-Instance（名字或 json 路径）→ -Family（找 instances\<family>.json）→ 内置默认。
+# 内置默认只覆盖本机这三套，作用仅仅是「老的 -Family 命令在没登记时还能跑」；换机器就该登记。
+function Read-InstanceRaw([string]$Spec) {
+    $candidates = New-Object System.Collections.ArrayList
+    if ($Spec -match '[\\/]' -or $Spec -like '*.json') { $null = $candidates.Add($Spec) }
+    $null = $candidates.Add((Join-Path $Root "instances\$Spec.json"))
+    foreach ($c in $candidates) {
+        if (Test-Path $c) { return (Get-Content $c -Raw -Encoding utf8 | ConvertFrom-Json) }
+    }
+    return $null
+}
+
+$Builtin = @{
+    fabric   = @{ loader = 'fabric'; dir = $null; gamePort = 25566; probePort = 39011
+                  args = @('-Xmx2G', '-jar', 'fabric-26.3.jar', 'nogui') }
+    forge    = @{ loader = 'forge'; dir = $null; gamePort = 25567; probePort = 39012
+                  args = @('-Xmx2G', '@user_jvm_args.txt',
+                           '@libraries/net/minecraftforge/forge/26.3-66.0.13/win_args.txt', 'nogui') }
+    neoforge = @{ loader = 'neoforge'; dir = $null; gamePort = 25568; probePort = 39013
+                  args = @('-Xmx2G', '@user_jvm_args.txt',
+                           '@libraries/net/neoforged/neoforge/26.3.0.88/win_args.txt', 'nogui') }
+}
+
+function Normalize-Instance($raw, [string]$fallbackName) {
+    $loader = if ($raw.loader) { [string]$raw.loader } else { $fallbackName }
+    $side = if ($raw.side) { [string]$raw.side } else { 'both' }
+    $client = $raw.client
+    return [pscustomobject]@{
+        name            = if ($raw.name) { [string]$raw.name } else { $fallbackName }
+        loader          = $loader
+        dir             = [string]$raw.dir
+        gamePort        = [int]$raw.gamePort
+        probePort       = [int]$raw.probePort
+        args            = @($raw.args)
+        javaExe         = if ($raw.javaExe) { [string]$raw.javaExe } else { $null }
+        probeJar        = if ($raw.probeJar) { [string]$raw.probeJar } else { $null }
+        # 该实例覆盖哪一端：client / server / both。场景预检用它判断「这条用例有没有着落」。
+        side            = $side
+        # 任意启动器：给了 start.exe 就按它起（探针参数走 JAVA_TOOL_OPTIONS），否则退回 javaExe + args。
+        startExe        = if ($raw.start -and $raw.start.exe) { [string]$raw.start.exe } else { $null }
+        startArgs       = if ($raw.start -and $raw.start.args) { @($raw.start.args | ForEach-Object { [string]$_ }) } else { @() }
+        startEnv        = if ($raw.start -and $raw.start.env) { $h = @{}; foreach ($pp in $raw.start.env.PSObject.Properties) { $h[$pp.Name] = [string]$pp.Value }; $h } else { @{} }
+        # 客户端三态：gradle（本仓 lab 工程的 runClient）/ standalone（真实客户端实例）/ none（只测服务端）
+        # side=server 的实例**没有客户端**：仅服务端环境不该因为「默认值」去起客户端。
+        clientMode      = if ($side -eq 'server') { 'none' } elseif ($client -and $client.mode) { [string]$client.mode } else { 'gradle' }
+        clientProject   = if ($client -and $client.project) { [string]$client.project } else { "lab\$loader" }
+        clientProbePort = if ($client -and $client.probePort) { [int]$client.probePort } else { 39002 }
+        clientExe       = if ($client -and $client.exe) { [string]$client.exe } else { $null }
+        clientArgs      = if ($client -and $client.args) { @($client.args) } else { @() }
+        # client.mode=external 时等用户自己把客户端起好；默认 10 分钟（人手动操作比脚本慢得多）
+        externalWaitSec = if ($client -and $client.waitSec) { [int]$client.waitSec } else { 600 }
+    }
+}
+
+$Spec = if ($Instance) { [string]$Instance } else { [string]$Family }
+$rawCfg = Read-InstanceRaw $Spec
+if ($null -eq $rawCfg) {
+    $rawCfg = $Builtin[$Spec]
+    if ($null -eq $rawCfg) {
+        throw "没有实例 '$Spec' 的登记，也没有内置默认。先写 instances\$Spec.json（见 docs\deployment-topology.md），或用 -Instance <json 路径>。"
+    }
+    Write-Host "（实例 '$Spec' 未登记，用内置默认；换机器请登记 instances\$Spec.json）"
+}
+$Cfg = Normalize-Instance $rawCfg $Spec
+$InstanceName = $Cfg.name
+$Family = $Cfg.loader
+$ServerDir = $Cfg.dir
+$GamePort = $Cfg.gamePort
+$ServerProbe = $Cfg.probePort
+$ClientProbe = $Cfg.clientProbePort
+$ClientBase = "http://127.0.0.1:$ClientProbe"
+$ServerBase = "http://127.0.0.1:$ServerProbe"
+# 优先级：-JavaExe > 实例登记 > JAVA_HOME/PATH。全空时 Resolve-JavaExe 报错并说明该设什么。
+$JavaExe = Resolve-JavaExe ($(if ($JavaExe) { $JavaExe } elseif ($Cfg.javaExe) { $Cfg.javaExe } else { '' }))
+$HasClient = ($Cfg.clientMode -ne 'none')
+
+if (-not $ServerDir) {
+    throw "实例 '$InstanceName' 没有登记服务端目录：先运行 scripts\setup-wizard.ps1，或 register-instance.ps1 -Dir <服务端目录>（套件不携带任何服务端）"
+}
+if (-not (Test-Path $ServerDir)) {
+    throw "实例 '$InstanceName' 的服务端目录不存在：$ServerDir（先自备一个 $Family 服务端，再登记 instances\$InstanceName.json）"
+}
+
+if (-not $EvidenceDir) {
+    $EvidenceDir = Join-Path $Root ("tmp\devrun-{0}-{1}" -f $InstanceName, (Get-Date -Format 'yyyyMMdd-HHmmss'))
+}
+New-Item -ItemType Directory -Force -Path $EvidenceDir | Out-Null
+
+$Results = New-Object System.Collections.ArrayList
+$PhaseTimes = @{}
+
+function Write-Phase([string]$Name) {
+    Write-Host ("[{0}] === {1} ===" -f (Get-Date -Format 'HH:mm:ss'), $Name)
+}
+
+function Get-PortOwner([int]$Port) {
+    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $conn) { return $null }
+    return $conn.OwningProcess
+}
+
+function Stop-PortOwner([int]$Port, [string]$Label) {
+    $owner = Get-PortOwner $Port
+    if ($null -eq $owner) { return }
+    Write-Host "  端口 $Port 被 pid $owner 占用（$Label），先杀掉"
+    & taskkill.exe /T /F /PID $owner 2>&1 | Out-Null
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Milliseconds 500
+        if ($null -eq (Get-PortOwner $Port)) { return }
+    }
+    throw "端口 $Port 在 10s 内没有释放（$Label）"
+}
+
+function Invoke-Probe([string]$Base, [string]$Method, [string]$Path, $Body) {
+    # 非 2xx 也要拿 JSON 信封：探测端点把「响亮失败」放在 4xx/5xx 的 body 里。
+    $params = @{ Uri = "$Base$Path"; Method = $Method; Headers = $Headers; SkipHttpErrorCheck = $true; TimeoutSec = 30 }
+    if ($null -ne $Body) {
+        $params.Body = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Compress -Depth 8 }
+        $params.ContentType = 'application/json'
+    }
+    try {
+        $resp = Invoke-WebRequest @params
+        return [pscustomobject]@{ Status = [int]$resp.StatusCode; Body = $resp.Content }
+    } catch {
+        return [pscustomobject]@{ Status = 0; Body = ("transport error: " + $_.Exception.Message) }
+    }
+}
+
+function Wait-Probe([string]$Base, [string]$Label, [int]$TimeoutSec) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $r = Invoke-Probe $Base 'GET' '/status' $null
+        if ($r.Status -eq 200) { return $r }
+        Start-Sleep -Seconds 2
+    }
+    throw "$Label 在 ${TimeoutSec}s 内没有就绪（/status 未返回 200）"
+}
+
+function Wait-Player([int]$TimeoutSec) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $r = Invoke-Probe $ClientBase 'GET' '/status' $null
+        if ($r.Status -eq 200) {
+            $j = $r.Body | ConvertFrom-Json
+            if ($j.data.player) { return $j.data.player }
+        }
+        Start-Sleep -Seconds 2
+    }
+    throw "客户端在 ${TimeoutSec}s 内没有进入世界（/status.player 一直为空）"
+}
+
+function Get-JsonPath($Object, [string]$Path) {
+    $cur = $Object
+    foreach ($seg in $Path.Split('.')) {
+        if ($null -eq $cur) { return $null }
+        $prop = $cur.PSObject.Properties[$seg]
+        if ($null -eq $prop) { return $null }
+        $cur = $prop.Value
+    }
+    return $cur
+}
+
+function Compare-Expect($Body, $Expect) {
+    if ($null -eq $Expect) { return @{ Pass = $true; Reason = 'no expect' } }
+    if ($null -eq $Expect.json) { return @{ Pass = $true; Reason = 'status only' } }
+    try { $json = $Body | ConvertFrom-Json } catch { return @{ Pass = $false; Reason = 'body is not JSON' } }
+    foreach ($key in $Expect.json.PSObject.Properties.Name) {
+        $want = [string]$Expect.json.$key
+        $got = Get-JsonPath $json $key
+        $gotText = if ($null -eq $got) { '<missing>' } else { [string]$got }
+        if ($gotText -ne $want) {
+            return @{ Pass = $false; Reason = "json.$key expected '$want' got '$gotText'" }
+        }
+    }
+    return @{ Pass = $true; Reason = 'ok' }
+}
+
+try {
+    # ---------------- 步骤 1：准备 ----------------
+    Write-Phase "1/6 准备（$Family → $ServerDir，游戏 $GamePort，探针 $ServerProbe）"
+    $t0 = Get-Date
+
+    # 清掉上一轮残留：端口是最可靠的「有没有东西在跑」的判据，比 pid 文件可靠
+    Stop-PortOwner $ServerProbe 'server probe'
+    Stop-PortOwner $ClientProbe 'client probe'
+    Stop-PortOwner $GamePort 'game port'
+
+    # 探针 jar 来源优先级：-ProbeJar → 实例登记的 probeJar → lab\<loader> 的构建产物。
+    # 套件使用者没有 lab 工程，靠前两条；本仓开发者通常走第三条。
+    # 统一成「路径字符串」：三个来源的形态不同（参数是 string、登记项是 string、构建产物是 FileInfo），
+    # 曾经因为 lab 分支拿来的是 String 却按 FileInfo 读 .FullName ⇒ Copy-Item 报「参数 Path 为 null」。
+    $probeJar = $null
+    if ($ProbeJar) {
+        if (-not (Test-Path $ProbeJar)) { throw "指定的 -ProbeJar 不存在：$ProbeJar" }
+        $probeJar = (Resolve-Path $ProbeJar).Path
+    } elseif ($Cfg.probeJar -and (Test-Path $Cfg.probeJar)) {
+        $probeJar = (Resolve-Path $Cfg.probeJar).Path
+    } else {
+        $built = Get-ChildItem -Path (Join-Path $Root "lab\$Family\build\libs\*.jar") -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notlike '*sources*' } | Select-Object -First 1
+        if ($built) { $probeJar = $built.FullName }
+    }
+    if (-not $probeJar) {
+        throw "找不到探针 jar：用 -ProbeJar <路径> 指定，或在 instances\$InstanceName.json 里写 probeJar，或先跑 lab\$Family 的 build"
+    }
+    $modsDir = Join-Path $ServerDir 'mods'
+    New-Item -ItemType Directory -Force -Path $modsDir | Out-Null
+    Copy-Item -Path $probeJar -Destination (Join-Path $modsDir 'mcdev_probe-1.0.0.jar') -Force
+    Write-Host "  探针 jar: $(Split-Path -Leaf $probeJar) $((Get-Item $probeJar).Length) B"
+
+    foreach ($mod in $Mods) {
+        if (-not (Test-Path $mod)) { throw "被测 mod 不存在：$mod" }
+        Copy-Item $mod (Join-Path $modsDir (Split-Path -Leaf $mod)) -Force
+        Write-Host "  被测 mod: $(Split-Path -Leaf $mod)"
+    }
+
+    $serverOut = Join-Path $EvidenceDir 'server.out'
+    $serverErr = Join-Path $EvidenceDir 'server.err'
+    $clientOut = Join-Path $EvidenceDir 'client.out'
+    # 旧日志必须先删：曾因为轮询读到上一轮同一行而误报「READY after 0s」
+    Remove-Item $serverOut, $serverErr, $clientOut -ErrorAction SilentlyContinue
+
+    # 场景预检：先读一遍场景，确认「要客户端」的场景不会在实例没客户端时空跑一半。
+    $scenarioPath = if (Test-Path $Scenario) { $Scenario } else { Join-Path $Root $Scenario }
+    if (-not (Test-Path $scenarioPath)) { throw "场景文件不存在：$scenarioPath" }
+    $sc = Get-Content $scenarioPath -Raw -Encoding utf8 | ConvertFrom-Json
+    $clientSteps = @($sc.steps | Where-Object { $_.target -eq 'client' })
+    if ($clientSteps.Count -gt 0 -and -not $HasClient) {
+        throw "场景 '$($sc.name)' 有 $($clientSteps.Count) 条客户端用例，但实例 '$InstanceName' 登记为 client.mode=none / side=server（没有客户端）。改用服务端场景，或给实例补 client 段。"
+    }
+    $serverSteps = @($sc.steps | Where-Object { $_.target -eq 'server' })
+    if ($serverSteps.Count -gt 0 -and $Cfg.side -eq 'client') {
+        throw "场景 '$($sc.name)' 有 $($serverSteps.Count) 条服务端用例，但实例 '$InstanceName' 登记为 side=client。改用客户端场景，或把 side 改成 both。"
+    }
+    $PhaseTimes['prepare'] = ((Get-Date) - $t0).TotalSeconds
+
+    if ($PreflightOnly) {
+        Write-Host ''
+        Write-Host '--- 预检结果（未起任何进程）---'
+        Write-Host "  实例      : $InstanceName（loader=$Family, side=$($Cfg.side)）"
+        Write-Host "  服务端目录: $ServerDir"
+        Write-Host "  游戏端口  : $GamePort    探针端口: $ServerProbe"
+        Write-Host "  启动方式  : $(if ($Cfg.startExe) { "start.exe = $($Cfg.startExe) " + ($Cfg.startArgs -join ' ') } else { "$JavaExe " + (@('-Dmcdev.probe.port=…') + $Cfg.args -join ' ') })"
+        Write-Host "  客户端    : mode=$($Cfg.clientMode) 探针端口=$ClientProbe$(if ($Cfg.clientMode -eq 'standalone') { " exe=$($Cfg.clientExe)" } elseif ($Cfg.clientMode -eq 'gradle') { " project=$($Cfg.clientProject)" })"
+        Write-Host "  探针 jar  : $probeJar"
+        Write-Host "  场景      : $($sc.name)（$(@($sc.steps).Count) 步：客户端 $($clientSteps.Count) / 服务端 $($serverSteps.Count)）"
+        Write-Host '  结论      : 登记可用'
+        return
+    }
+
+    # ---------------- 步骤 2：起服 ----------------
+    Write-Phase '2/6 起服务端'
+    $t0 = Get-Date
+    # 两种起法，取决于实例登记了什么：
+    #  a) start.exe：任意启动器/开服器/脚本（.bat/.sh/外壳 jar/HMCL 之类）。我们**不知道**它的命令行
+    #     形状，所以探针端口与令牌通过环境变量 JAVA_TOOL_OPTIONS 注入 —— 任何 JVM 启动器都会自己读它。
+    #  b) javaExe + args（本仓 lab 工程的形态）：-D 必须写在 -jar / @args **之前**，否则参数落到
+    #     Minecraft 参数区，探针就落到默认 39001（第一次跑就是这样：服 8s 起来了、脚本按 39011 等到 240s 超时）。
+    $probeJvm = "-Dmcdev.probe.port=$ServerProbe -Dmcdev.probe.token=$Token"
+    if ($Cfg.startExe) {
+        $env:JAVA_TOOL_OPTIONS = ($env:JAVA_TOOL_OPTIONS + ' ' + $probeJvm).Trim()
+        foreach ($k in @($Cfg.startEnv.Keys)) { Set-Item -Path "env:$k" -Value $Cfg.startEnv[$k] }
+        Write-Host "  启动器: $($Cfg.startExe) $($Cfg.startArgs -join ' ')"
+        $serverPid = (Start-Process -FilePath $Cfg.startExe -ArgumentList @($Cfg.startArgs) `
+                -WorkingDirectory $ServerDir -WindowStyle Hidden `
+                -RedirectStandardOutput $serverOut -RedirectStandardError $serverErr -PassThru).Id
+    } else {
+        $javaArgs = @("-Dmcdev.probe.port=$ServerProbe", "-Dmcdev.probe.token=$Token") + $Cfg.args
+        $serverPid = (Start-Process -FilePath $JavaExe -ArgumentList $javaArgs `
+                -WorkingDirectory $ServerDir -WindowStyle Hidden `
+                -RedirectStandardOutput $serverOut -RedirectStandardError $serverErr -PassThru).Id
+    }
+    Write-Host "  服进程 pid=$serverPid（日志 $serverOut）"
+    $serverStatus = Wait-Probe $ServerBase '服务端探针' $ServerTimeoutSec
+    $serverJson = $serverStatus.Body | ConvertFrom-Json
+    Write-Host "  就绪：loader=$($serverJson.data.loader) probe=$ServerProbe"
+    $PhaseTimes['server'] = ((Get-Date) - $t0).TotalSeconds
+
+    # ---------------- 步骤 3：起客户端 ----------------
+    # 三态来自实例登记的 client.mode：gradle（本仓 lab 工程的 runClient）/
+    # standalone（真实客户端实例，args 里自己带 -Dmcdev.probe.client.port）/ none（只测服务端）。
+    if (-not $HasClient) {
+        Write-Phase '3/6 跳过客户端（本次实例登记为 client.mode=none）'
+        $PhaseTimes['client'] = 0
+    } elseif ($Cfg.clientMode -eq 'external') {
+        # 用户自备客户端：我们不启动任何东西，只等它的探针上线。发布套件不携带 MC 客户端，
+        # 所以新环境里这是默认路径（用户用自己的启动器，mods/ 里放探针 jar，JVM 参数带端口）。
+        Write-Phase '3/6 等待外部客户端（client.mode=external：脚本不启动客户端）'
+        $t0 = Get-Date
+        Write-Host "  请用你自己的启动器启动客户端，并确认："
+        Write-Host "    · 客户端 mods\ 里有 mcdev_probe-1.0.0.jar"
+        Write-Host "    · JVM 参数带 -Dmcdev.probe.client.port=$ClientProbe 与 -Dmcdev.probe.server.url=http://127.0.0.1:$ServerProbe"
+        Write-Host "  （最多等 $($Cfg.externalWaitSec) 秒）"
+        Wait-Probe $ClientBase '客户端探针（外部）' $Cfg.externalWaitSec | Out-Null
+        Write-Host '  客户端探针已监听'
+        $PhaseTimes['client'] = ((Get-Date) - $t0).TotalSeconds
+    } elseif ($Cfg.clientMode -eq 'standalone') {
+        Write-Phase "3/6 起独立客户端（$($Cfg.clientExe)）"
+        $t0 = Get-Date
+        if (-not $Cfg.clientExe -or -not (Test-Path $Cfg.clientExe)) {
+            throw "实例 '$InstanceName' 的 client.mode=standalone，但 client.exe 不存在：$($Cfg.clientExe)"
+        }
+        $standaloneArgs = @("-Dmcdev.probe.client.port=$ClientProbe",
+                            "-Dmcdev.probe.server.url=http://127.0.0.1:$ServerProbe") + @($Cfg.clientArgs)
+        $clientPid = (Start-Process -FilePath $Cfg.clientExe -ArgumentList $standaloneArgs `
+                -WindowStyle Hidden -RedirectStandardOutput $clientOut `
+                -RedirectStandardError ($clientOut + '.err') -PassThru).Id
+        Write-Host "  客户端 pid=$clientPid（日志 $clientOut）"
+        Wait-Probe $ClientBase '客户端探针' $ClientTimeoutSec | Out-Null
+        Write-Host '  客户端探针已监听'
+        $PhaseTimes['client'] = ((Get-Date) - $t0).TotalSeconds
+    } else {
+        Write-Phase "3/6 起客户端（gradlew runClient，$ClientProbe）"
+        $t0 = Get-Date
+        $JavaHome = Resolve-JavaHome $JavaExe
+        $env:JAVA_HOME = $JavaHome
+        $env:JAVA_TOOL_OPTIONS = (@(
+                (Get-JavaProxyOptions (Resolve-ProxyUrl -Explicit $Proxy -NoProxy:$NoProxy))
+                "-Dmcdev.probe.server.url=http://127.0.0.1:$ServerProbe"
+                "-Dmcdev.probe.client.port=$ClientProbe"
+            ) | Where-Object { $_ }) -join ' '
+        $inner = Join-Path $EvidenceDir 'run-client.ps1'
+        @(
+            "`$env:JAVA_HOME='$JavaHome'"
+            "`$env:JAVA_TOOL_OPTIONS='$($env:JAVA_TOOL_OPTIONS)'"
+            "Set-Location '$Root\\$($Cfg.clientProject)'"
+            "& .\gradlew.bat --no-daemon --console=plain runClient *> '$clientOut'"
+        ) | Set-Content -Path $inner -Encoding utf8
+        $clientWrapper = (Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile', '-File', $inner) `
+                -WindowStyle Hidden -PassThru).Id
+        Write-Host "  客户端 wrapper pid=$clientWrapper（日志 $clientOut）"
+        Wait-Probe $ClientBase '客户端探针' $ClientTimeoutSec | Out-Null
+        Write-Host '  客户端探针已监听'
+        $PhaseTimes['client'] = ((Get-Date) - $t0).TotalSeconds
+    }
+    $PhaseTimes['client'] = ((Get-Date) - $t0).TotalSeconds
+
+    # ---------------- 步骤 4：连接 ----------------
+    if (-not $HasClient) {
+        Write-Phase '4/6 跳过连接（无客户端：服务端场景不需要玩家）'
+        $player = $null
+        $PhaseTimes['connect'] = 0
+    } else {
+        Write-Phase "4/6 连接 ${GamePort}"
+        $t0 = Get-Date
+        # /connect 只读 query；用 body 会被静默忽略并连到默认 25566（§14.9 的坑）
+        $connect = Invoke-Probe $ClientBase 'POST' "/connect?host=127.0.0.1&port=$GamePort" $null
+        if ($connect.Status -ne 200) { throw "connect 失败：$($connect.Status) $($connect.Body)" }
+        $player = Wait-Player $ConnectTimeoutSec
+        Write-Host "  进入世界：player=$player"
+
+        $op = Invoke-Probe $ServerBase 'POST' '/command' (@{ cmd = "op $player" } | ConvertTo-Json -Compress)
+        Write-Host "  op $player → $($op.Status)"
+        $PhaseTimes['connect'] = ((Get-Date) - $t0).TotalSeconds
+    }
+
+    # ---------------- 步骤 5：执行场景 ----------------
+    Write-Phase "5/6 执行场景 $Scenario"
+    $t0 = Get-Date
+    Write-Host "  场景：$($sc.name)（$($sc.steps.Count) 条）"
+
+    foreach ($step in $sc.steps) {
+        $base = if ($step.target -eq 'server') { $ServerBase } else { $ClientBase }
+        $method = if ($step.method) { $step.method } else { 'POST' }
+        # {{player}} 占位符：玩家名每次启动都变（Fabric 是 PlayerNNN、Forge/NeoForge 是 Dev），
+        # 场景里凡是要引用玩家的地方（tp / op / effect）都写占位符，别把名字写死。
+        $path = [string]$step.path
+        if ($path -and $path.Contains('{{player}}')) { $path = $path.Replace('{{player}}', $player) }
+        $bodyArg = $step.body
+        if ($null -ne $bodyArg) {
+            $bodyText = if ($bodyArg -is [string]) { $bodyArg } else { $bodyArg | ConvertTo-Json -Compress -Depth 8 }
+            $bodyArg = $bodyText.Replace('{{player}}', $player)
+        }
+        if ($null -ne $step.waitMs) { Start-Sleep -Milliseconds ([int]$step.waitMs) }   # 发请求前先等（如 tp 之后等落地）
+        $r = Invoke-Probe $base $method $path $bodyArg
+        $bodyText = if ($r.Body -is [string]) { $r.Body } else { $r.Body | ConvertTo-Json -Compress -Depth 8 }
+        $statusOk = $true
+        if ($null -ne $step.expect) {
+            if ($null -ne $step.expect.status) { $statusOk = ($r.Status -eq [int]$step.expect.status) }
+            elseif ($null -ne $step.expect.statusIn) { $statusOk = ($step.expect.statusIn -contains $r.Status) }
+        }
+        $jsonCheck = Compare-Expect $r.Body $step.expect
+        $pass = $statusOk -and $jsonCheck.Pass
+        $reason = if ($statusOk -and $jsonCheck.Pass) { 'ok' } else {
+            if (-not $statusOk) { "status expected $($step.expect.status) got $($r.Status)" } else { $jsonCheck.Reason }
+        }
+        $null = $Results.Add([pscustomobject]@{
+                id      = $step.id
+                target  = $step.target
+                request = "$method $path"
+                status  = $r.Status
+                pass    = $pass
+                reason  = $reason
+                body    = $bodyText
+            })
+        $flag = if ($pass) { 'PASS' } else { 'FAIL' }
+        Write-Host ("  [{0}] {1,-22} {2,4} {3}" -f $flag, $step.id, $r.Status, $reason)
+    }
+    $PhaseTimes['scenario'] = ((Get-Date) - $t0).TotalSeconds
+
+    # ---------------- 步骤 6：取证 ----------------
+    Write-Phase '6/6 取证'
+    $finalServer = (Invoke-Probe $ServerBase 'GET' '/status' $null).Body | ConvertFrom-Json
+    $finalClient = if ($HasClient) { (Invoke-Probe $ClientBase 'GET' '/status' $null).Body | ConvertFrom-Json } else { $null }
+    $serverTail = if (Test-Path $serverOut) { Get-Content $serverOut -Tail 60 } else { @() }
+    $clientTail = if (Test-Path $clientOut) { Get-Content $clientOut -Tail 40 } else { @() }
+
+    $resultsPath = Join-Path $EvidenceDir 'results.json'
+    [pscustomobject]@{
+        family      = $Family
+        scenario    = $sc.name
+        player      = $player
+        gamePort    = $GamePort
+        serverProbe = $ServerProbe
+        clientProbe = $ClientProbe
+        startedAt   = (Get-Date).ToString('s')
+        phaseSeconds = $PhaseTimes
+        steps       = @($Results)
+        server      = $finalServer.data
+        client      = if ($finalClient) { $finalClient.data } else { $null }
+    } | ConvertTo-Json -Depth 8 | Set-Content -Path $resultsPath -Encoding utf8
+
+    $passCount = @($Results | Where-Object { $_.pass }).Count
+    $failCount = $Results.Count - $passCount
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("# devrun — $Family / $($sc.name)")
+    $lines.Add('')
+    $lines.Add("- 玩家：``$player``")
+    $lines.Add("- 端口：游戏 $GamePort / 服务端探针 $ServerProbe / 客户端探针 $ClientProbe")
+    $lines.Add("- 结论：**PASS=$passCount FAIL=$failCount total=$($Results.Count)**")
+    $lines.Add('- 阶段耗时（秒）：' + (($PhaseTimes.GetEnumerator() | ForEach-Object { "$($_.Key)=$([math]::Round($_.Value,1))" }) -join ' / '))
+    $lines.Add('')
+    $lines.Add('| 用例 | 目标 | 请求 | 状态 | 结论 | 理由 |')
+    $lines.Add('|---|---|---|---:|---|---|')
+    foreach ($r in $Results) {
+        $verdict = if ($r.pass) { 'PASS' } else { 'FAIL' }
+        $lines.Add("| $($r.id) | $($r.target) | ``$($r.request)`` | $($r.status) | $verdict | $($r.reason) |")
+    }
+    $lines.Add('')
+    $lines.Add('## 服务端 /status')
+    $lines.Add('```json')
+    $lines.Add(($finalServer | ConvertTo-Json -Depth 6))
+    $lines.Add('```')
+    $lines.Add('## 客户端 /status')
+    $lines.Add('```json')
+    $lines.Add(($finalClient | ConvertTo-Json -Depth 6))
+    $lines.Add('```')
+    $lines.Add('## 服务端日志尾巴')
+    $lines.Add('```')
+    # [string[]]$null 会得到 $null，AddRange($null) 直接抛 —— 无日志/无客户端时就是这条路径。
+    if ($serverTail) { $lines.AddRange([string[]]@($serverTail)) }
+    $lines.Add('```')
+    $lines.Add('## 客户端日志尾巴')
+    $lines.Add('```')
+    if ($clientTail) { $lines.AddRange([string[]]@($clientTail)) }
+    $lines.Add('```')
+    $summaryPath = Join-Path $EvidenceDir 'summary.md'
+    $lines | Set-Content -Path $summaryPath -Encoding utf8
+    Write-Host "  取证：$summaryPath"
+
+    if ($failCount -gt 0) { throw "场景有 $failCount 条 FAIL（见 $summaryPath）" }
+}
+finally {
+    if (-not $KeepRunning) {
+        Write-Phase '收尾（停客户端与服务端）'
+        $null = Invoke-Probe $ClientBase 'POST' '/quit' $null
+        $null = Invoke-Probe $ServerBase 'POST' '/command' '{"cmd":"stop"}'
+        $deadline = (Get-Date).AddSeconds(45)
+        # 三个端口都要等：客户端 /quit 之后 gradlew 还要几秒才放手 39002，
+        # 不等它就会在下一次 devrun 的「准备」阶段被当成旧客户端杀掉（forge 那轮实测就是这样）。
+        while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 1
+            if ($null -eq (Get-PortOwner $ServerProbe) -and $null -eq (Get-PortOwner $GamePort) -and $null -eq (Get-PortOwner $ClientProbe)) { break }
+        }
+        $left = @($ServerProbe, $GamePort, $ClientProbe | Where-Object { $null -ne (Get-PortOwner $_) })
+        if ($left.Count -gt 0) { Write-Warning "仍占用的端口：$($left -join ',')" }
+        else { Write-Host '  端口已释放' }
+    } else {
+        Write-Host '  -KeepRunning：保留服务端与客户端'
+    }
+}

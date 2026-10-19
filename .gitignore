@@ -1,0 +1,42 @@
+# ============================================================
+# MCModsDevBridge — 版本控制忽略规则
+# 原则：可重建的产物、机器相关的缓存、第三方参考克隆 都不进库。
+# ============================================================
+
+# ---- codegraph 索引（机器相关、随时可 rebuild）----
+.codegraph/
+
+# ---- Gradle / 构建产物（lab 下三家骨架）----
+lab/*/.gradle/
+lab/*/build/
+lab/*/run/
+lab/cache/
+*.class
+
+# ---- 发布产物（由 scripts/package.ps1 重新生成）----
+dist/
+
+# ---- 临时与取证目录（devrun 产物、启动日志、探针脚本）----
+tmp/
+
+# ---- 第三方参考克隆（各自是独立仓库，不是本项目代码）----
+ref-minecraft-mod-dev/
+
+# ---- 本机实例登记（含本机绝对路径 / 本机 java 路径，不入库）----
+# 部署到新环境时由 scripts/setup-wizard.ps1 或 register-instance.ps1 重新生成
+instances/
+
+# ---- 本机专属笔记（真实路径、端口、代理地址；不进公开库）----
+docs/local/
+
+# ---- 编辑器 / 系统垃圾 ----
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+
+# ---- 日志 ----
+*.log
+*.pid
+hosts.bak.*

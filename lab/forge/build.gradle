@@ -1,0 +1,86 @@
+// This is a minimal setup of a Forge mod workspace.
+// For complex examples (including AccessTransformers, Jar-in-Jar, and Mixin), see our examples repository.
+// https://github.com/MinecraftForge/MDKExamples
+
+plugins {
+    id 'java'
+    id 'idea'
+    id 'eclipse'
+    id 'net.minecraftforge.gradle' version '[7.0.17,8)'
+}
+
+version = '1.0.0'
+group = 'com.mcdev.probe'
+
+// P4 步骤 0：与另两家统一产物名；modId 见 META-INF/mods.toml
+base {
+    archivesName = 'mcdev_probe'
+}
+
+// Mojang ships Java 25 to end users in 26.1+, so your mod should target Java 25.
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+
+// Include generated resources
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+minecraft {
+    runs {
+        configureEach {
+            workingDir = layout.projectDirectory.dir('run')
+
+            systemProperty 'eventbus.api.strictRuntimeChecks', 'true'
+            systemProperty 'forge.enabledGameTestNamespaces', 'mcdev_probe'
+        }
+
+        register('client')
+
+        register('server') {
+            args '--nogui'
+        }
+
+        register('gameTestServer')
+
+        register('data') {
+            workingDir = layout.projectDirectory.dir('run-data')
+
+            args '--mod', 'mcdev_probe', '--all', '--output', layout.projectDirectory.dir('src/generated/resources'), '--existing', layout.projectDirectory.dir('src/main/resources')
+        }
+    }
+}
+
+repositories {
+    minecraft.mavenizer(it) // In Kotlin, it = this
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
+    mavenCentral()
+}
+
+dependencies {
+    implementation minecraft.dependency('net.minecraftforge:forge:26.3-66.0.13')
+    annotationProcessor 'net.minecraftforge:eventbus-validator:7.0.6'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // Use the UTF-8 charset for Java compilation
+    // This is done by default in Java 18+, but this ensures it no matter the Java or Gradle version
+    options.encoding = 'UTF-8'
+}
+// ---- P0 V4: 共享源码目录（架构 §4.2 方案 C，三份骨架共享同一份 shared/）----
+sourceSets.main.java.srcDirs += file('../shared/src/main/java')
+// ---- P4 第二段: 客户端探针入口 ----
+// Forge 的 MDK 只有 main 一个 source set（客户端类与服务端类编进同一个 jar），
+// 所以 shared 的客户端源集直接并进 main。代价：专用服务器启动时这些类也在 jar 里，
+// 但只有 dist==CLIENT 才会被加载（入口在 ForgeProbe 构造器里按 dist 分支）。
+sourceSets.main.java.srcDirs += file('../shared/src/client/java')
+// ---- P0 V7 遗留说明：Forge 26.3 的 mixin 配置只能由 jar MANIFEST 的 MixinConfigs 属性声明 ----
+// 实测：mods.toml 里的 [[mixins]] 在 Forge 26.3-66.0.13 上不起作用（debug.log 无任何配置注册记录）
+// P1 起本项目零 mixin（tick 冻结改用 MinecraftServer.tickRateManager()），故此处不再声明。
+// 将来若确实需要，恢复方式是：
+//   jar { manifest { attributes('MixinConfigs': 'xxx.mixins.json') } }
+
+// ---- P2: align with lab/fabric; deprecated usage must be reported (zero-warning is an acceptance item) ----
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs << '-Xlint:deprecation'
+    options.deprecation = true
+}
+

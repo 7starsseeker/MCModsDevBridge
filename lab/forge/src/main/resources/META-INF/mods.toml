@@ -1,0 +1,39 @@
+# See https://docs.minecraftforge.net/en/1.21.x/gettingstarted/modfiles/#modstoml
+# There are lots of things you can do with the mods.toml, and not all fields are included with this MDK
+# References: https://github.com/MinecraftForge/MDKExamples
+#
+# P4 步骤 0：examplemod 脚手架已删除，探针自身就是 mod（modId=mcdev_probe）。
+
+modLoader="javafml"
+loaderVersion="[66,)"
+license="All Rights Reserved"
+#issueTrackerURL="https://github.com/MyOrganization/MyMod/" #optional
+#clientSideOnly=true #optional, default=false
+
+[[mods]]
+modId="mcdev_probe"
+version="1.0.0"
+displayName="MCDev Probe"
+#updateJSONURL="https://example.com/updates.json" #optional
+#displayURL="https://example.com/" #optional
+#logoFile="mcdev_probe.png" #optional
+#credits="" #optional
+authors="MCDev" #optional
+#displayTest="MATCH_VERSION" #optional, default=MATCH_VERSION when not clientSideOnly, else IGNORE_ALL_VERSION
+
+description='''MC 26.3 模组开发探针（开发期外部组件，独立 mod）。
+服务端观察 + 环境控制；角色驱动由客户端探针负责。'''
+
+[[dependencies.mcdev_probe]] #recommended
+    modId="forge"
+    mandatory=true
+    versionRange="[66,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.mcdev_probe]] #recommended
+    modId="minecraft"
+    mandatory=true
+    versionRange="[26.3,26.4,)"
+    ordering="NONE"
+    side="BOTH"

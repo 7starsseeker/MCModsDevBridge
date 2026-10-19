@@ -1,0 +1,44 @@
+{
+  "name": "smoke",
+  "description": "端到端编排的最小场景：两侧探针健康检查 + 一条服务端动作 + 一条客户端动作 + 一条响亮失败（错误码也是契约）",
+  "steps": [
+    {
+      "id": "server-status",
+      "target": "server",
+      "method": "GET",
+      "path": "/status",
+      "expect": { "status": 200, "json": { "data.side": "server", "data.actionBackend": "server" } }
+    },
+    {
+      "id": "client-status",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "expect": { "status": 200, "json": { "data.side": "client", "data.actionBackend": "client" } }
+    },
+    {
+      "id": "server-gamemode-creative",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/gamemode",
+      "body": { "mode": "creative" },
+      "expect": { "status": 200, "json": { "data.applied": true } }
+    },
+    {
+      "id": "client-walk",
+      "target": "client",
+      "method": "POST",
+      "path": "/action/move",
+      "body": { "mode": "walk", "durationMs": 400 },
+      "expect": { "status": 200, "json": { "data.moved": true } }
+    },
+    {
+      "id": "loud-failure-unknown-gamemode",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/gamemode",
+      "body": { "mode": "nonsense" },
+      "expect": { "status": 400, "json": { "error.code": "BAD_REQUEST" } }
+    }
+  ]
+}
