@@ -100,6 +100,21 @@
 > `mcdev` 的离线 UUID 是 `<OFFLINE_UUID>`）。`devrun` 的 `Wait-Player` 超时后现在会抄
 > 服务端日志最后几条断开原因、并对白名单单独提示；反例实测（用户名 `intruder`）输出里直接带断开原因 +
 > 提示（`tmp/devrun-wl-probe`，exit 1）。教训：**「连不上」先看服务端日志，别先怀疑加载器**。
+>
+> **2026-10-20 02:55 增补（Forge/NeoForge 版的 fixture：只到「检测」）**：`lab/fixture-forge/`（产物
+> `mcdev_fixture-1.0.0.jar` 6,859 B）与 `lab/fixture-neoforge/`（6,819 B）补齐「两端都必须」样本的三加载器版，
+> **三个工程共用同一个 modId `mcdev_fixture` 与同一串日志文本**（`client sent hello` / `server got hello from` /
+> `client got ack` / `client missing for` / `server missing (no ack in`）⇒ 同一份场景与断言可跨加载器复用。
+> 差别只在加载器 API：Forge 是 EventBus 7（`RegisterCommandsEvent.BUS` / `TickEvent.ServerTickEvent.Post.BUS`，
+> record 访问器 `server()` / `ClientChatReceivedEvent.BUS`），NeoForge 是 `NeoForge.EVENT_BUS` +
+> `ServerTickEvent.Post` 的 `getServer()`；客户端类都只在 `dist == CLIENT` 分支里 `install()`。
+> 按需求方「只检测、不做大冒烟」的口径，本轮只做到：①静态（jar 元数据 `modId=mcdev_fixture`、`version=1.0.0`、
+> 两个入口类都在）；②服务端加载实证 —— `side=server` 临时实例 + 四步场景（`/status` → `/mods` 含 `mcdev_fixture`
+> → `POST /command {"cmd":"mcdevfixture"}` → `/log/tail` 含 `server got hello from`）：forge `tmp\detect-fixture-forge2`
+> **4/4 PASS exit 0**、neoforge `tmp\detect-fixture-neoforge` **4/4 PASS exit 0**，跑完 `install-mod -Remove` 卸干净。
+> **还没证**（别当已证）：客户端那一半没起客户端（`client sent hello` / `client got ack`、三条 `fixture-*` 场景、
+> 两条超时路径都只在 Fabric 上验过），Forge/NeoForge 的客户端分支目前只过编译。要补只需拿 `scenarios/fixture-both.json`
+> 在对应实例上跑一次，场景不用改。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
 

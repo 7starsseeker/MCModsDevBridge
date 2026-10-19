@@ -1,0 +1,31 @@
+# NeoForge mod metadata template（由 gradle 的 generateModMetadata 展开到 build/generated/sources/modMetadata）。
+# 与 lab/neoforge 的模板同结构，只是这个工程是 fixture 样本，不是探针。
+
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="MCDev"
+
+description='''
+「两端都必须」的最小测试样本（NeoForge 版），与 lab/fixture（Fabric 版）语义对位。
+客户端进世界后自己发一条握手命令，服务端收到后回一句 ack；
+两端日志各留一条只有「两端都在场」才会出现的话。
+不是示例 mod，也不是套件能力：它只用于验证「装没装上、生效没生效」能被断言。
+'''
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"

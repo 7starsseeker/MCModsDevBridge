@@ -1081,3 +1081,52 @@ N1–N3 的触发条件是「受支持 minor 版本数达到 2」，不是日期
 于是 `$cases = @($casesObj.cases)` 被静默转成字符串（三个 PSCustomObject 拼出两个空格），
 报错信息显示成「用例缺少字段 'name'："  "」。同一个坑之前在向导里也踩过（`$Mode`），
 这次的教训是：**参数名和局部变量名不要只靠大小写区分，尤其是带 `[string]` 约束的参数**。
+
+## 9.8 同一份样本、三个加载器（2026-10-20，只到「检测」为止）
+
+`lab/fixture`（Fabric）之外，2026-10-20 补了 `lab/fixture-forge/` 与 `lab/fixture-neoforge/`。
+三个工程**共用同一个 modId `mcdev_fixture`**，也共用同一串日志文本
+（`client sent hello` / `server got hello from` / `client got ack` / `client missing for` /
+`server missing (no ack in`）—— 于是同一份场景 JSON 与同一串断言可以跨加载器复用，
+换的只是「哪个 jar 装进哪个实例」。
+
+| 工程 | 产物 | 构建 |
+|---|---|---|
+| `lab/fixture-forge/` | `build/libs/mcdev_fixture-1.0.0.jar`（6,859 B） | `gradlew build` exit 0 |
+| `lab/fixture-neoforge/` | `build/libs/mcdev_fixture-1.0.0.jar`（6,819 B） | `gradlew build` exit 0 |
+
+两端在代码里的分工与 Fabric 版一致，差别只在加载器 API：
+
+| | Forge（EventBus 7） | NeoForge（`NeoForge.EVENT_BUS`） |
+|---|---|---|
+| 注册命令 | `RegisterCommandsEvent.BUS.addListener(...)` | `NeoForge.EVENT_BUS.addListener((RegisterCommandsEvent e) -> ...)` |
+| 服务端 tick | `TickEvent.ServerTickEvent.Post.BUS`，record 访问器 `server()` | `ServerTickEvent.Post`，继承来的 `getServer()` |
+| 客户端 tick | `TickEvent.ClientTickEvent.Post.BUS` | `net.neoforged.neoforge.client.event.ClientTickEvent.Post` |
+| 客户端聊天 | `net.minecraftforge.client.event.ClientChatReceivedEvent.BUS` | `net.neoforged.neoforge.client.event.ClientChatReceivedEvent` |
+| 客户端隔离 | `if (FMLEnvironment.dist == Dist.CLIENT)` | `if (FMLEnvironment.getDist() == Dist.CLIENT)` |
+
+客户端类只在这个分支里被 `install()`，专用服务器上永远不会加载 —— 与两家探针入口同一套写法。
+
+### 「检测」到哪一步（本轮的范围）
+
+用户这一轮的要求是「补 Forge/NeoForge 版，不过就检测就行，不用大冒烟」。所以只做到：
+
+1. **静态**：jar 里 `META-INF/mods.toml` / `META-INF/neoforge.mods.toml` 的 `modId=mcdev_fixture`、
+   `version=1.0.0`，两个入口类都在（`FixtureForge` / `FixtureForgeClient`、`FixtureNeoForge` / `FixtureNeoForgeClient`）。
+2. **服务端加载实证**：`side=server` 的临时实例 + 一条四步场景（`/status` → `/mods` 含 `mcdev_fixture`
+   → `POST /command {"cmd":"mcdevfixture"}` → `/log/tail` 含 `server got hello from`）：
+   - forge：`tmp\detect-fixture-forge2`，**PASS=4 FAIL=0**，exit 0；
+   - neoforge：`tmp\detect-fixture-neoforge`，**PASS=4 FAIL=0**，exit 0。
+
+   这几步证明的不是「jar 被列出来」，而是「它的代码真的在跑」：命令是 mod 自己注册的，
+   回执是 mod 自己打的日志。跑完 `install-mod -Remove` 卸干净，两端 `mods\` 回到基线。
+
+### 还没证的（写在这里，别当已证）
+
+- **客户端那一半没有实跑**：这一轮没起客户端，`client sent hello` / `client got ack` 两条日志
+  和三条 `fixture-*` 场景（需要两端在场）只在 Fabric 上验过。Forge/NeoForge 的客户端分支
+  目前只过了编译。
+- **`client missing` / `server missing` 两条超时路径**同样只在 Fabric 上验过。
+
+要补的话成本不高：用 `instances/forge.json` / `neoforge.json`（或跨族实例）加上
+`scenarios/fixture-both.json` 跑一次即可 —— 因为 modId 与日志文本是一致的，场景不用改。
