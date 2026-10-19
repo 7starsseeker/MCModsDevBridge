@@ -49,6 +49,16 @@
 > forge 客 5/5**（`tmp/devrun-sides-cross`）、同族两端都装 5/5（`tmp/devrun-sides-both-fam`）、跨族把 **fabric 版**
 > jar 放进 forge 客 mods（`/mods` 的 `ids` 少一个，1 条**预期** FAIL，`tmp/devrun-sides-both`）。最后一条给出结论：
 > **装错加载器的 jar 加载器只是静默跳过**，连接照常、游戏照常，只有 `/mods` 能把它变成可断言的差异。
+>
+> **2026-10-20 01:40 增补（「两端都必须」有了最小样本）**：新增 `lab/fixture/`（Fabric，构建产物 6.8 KB）
+> —— 服务端注册 `/mcdevfixture`、玩家进服 100 tick 内没等到握手就记 `client missing for <player>`；客户端
+> 进世界 20 tick 后自动敲一次、120 tick 没回执就记 `server missing (no ack in 120 ticks)`。握手走**玩家命令**
+> 而不是自定义 payload：命令注册是 fabric-api 里最稳的一层，回执又天然进日志，不绑定 payload API 版本。
+> 三条场景 `scenarios/fixture-{both,client-missing,server-missing}.json` 实测：**5/5 / 4/4 / 5/5 全 PASS**
+> （`tmp/devrun-fixture-both`、`-fixture-client-missing2`、`-fixture-server-missing2`）。为此补了第四种断言
+> `expect.textNot`（原始响应体不得包含子串）—— 缺一侧的证明全靠「不该出现的没出现」，否则只能人眼看。
+> `lab/fixture` **不是示例 mod**，它只证明「套件能把缺一侧变成 PASS/FAIL」；真实 mod 的握手方式各不相同，
+> 断言要按它的日志/文档来写。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
 

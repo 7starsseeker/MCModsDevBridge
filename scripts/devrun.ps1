@@ -35,6 +35,7 @@
     expect 还有两种**包含**断言（等值断不了的东西用它）：
         "expect": { "contains": { "data.actionbar": "some text" } }    按点号路径取字段，断言其字符串形式包含子串
         "expect": { "text": ["System chat:", "[Server thread/INFO]"] }   断言原始响应体包含这些子串（日志用）
+        "expect": { "textNot": ["server got hello"] }                   断言原始响应体**不**包含这些子串（日志层面的「不该出现」）
     等时序的步骤用 retry（「通过就早退」，比写死 waitMs 稳）：
         "retry": { "times": 20, "intervalMs": 250 }    最多发 20 次、间隔 250ms，任一次断言通过即停；
     waitMs 仍然只在**首次**尝试前生效（用于「上一步的副作用要等一下」）。
@@ -381,6 +382,18 @@ function Compare-Expect($Body, $Expect) {
             $checked++
             if (-not $raw.Contains([string]$needle)) {
                 return @{ Pass = $false; Reason = "text is missing '$needle'" }
+            }
+        }
+    }
+    # expect.textNot：原始响应体里**不能**出现的子串（与 text 对称）。
+    # 存在的理由：日志层面的「不该出现」和字段层面的 notContains 一样是判据 ——
+    # 例如只装了一端的 mod，另一端的日志里就不该出现「握手成功」那几行。
+    if ($null -ne $Expect.textNot) {
+        $raw = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Compress -Depth 8 }
+        foreach ($needle in @($Expect.textNot)) {
+            $checked++
+            if ($raw.Contains([string]$needle)) {
+                return @{ Pass = $false; Reason = "text must not contain '$needle'" }
             }
         }
     }

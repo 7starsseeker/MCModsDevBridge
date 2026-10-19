@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "mcdev_fixture",
+  "version": "${version}",
+  "name": "MCDev Fixture",
+  "description": "Minimal fixture: proves a mod that needs both sides can be asserted by log handshake. Not a sample mod.",
+  "authors": [
+    "MCModsDevBridge"
+  ],
+  "license": "Apache-2.0",
+  "environment": "*",
+  "entrypoints": {
+    "server": [
+      "com.mcdev.fixture.FixtureServer"
+    ],
+    "client": [
+      "com.mcdev.fixture.FixtureClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

@@ -579,6 +579,31 @@ platform/<loader>/
 
 `devrun.ps1` 在第 4 步（连接后）打印两端加载器，不一致时额外提示「被测 mod 需要各自加载器的版本」；`summary.md` 的头部也记这一行，取证的人不必翻 `results.json`。
 
+### 9.3 「两端都必须」怎么证：`lab/fixture` + 三条场景
+
+上面三组覆盖的是**装没装上**。还有一类 mod 只有在两端都有对应实现时才生效（自定义 payload、客户端渲染、按键）。这类 mod 的失败**通常没有硬错误**：缺一侧时游戏照常跑，只是功能静默不发生。所以判据必须由 mod 自己给出来。
+
+`lab/fixture`（6.8 KB，Fabric）就是为此写的最小样本 —— **它不是示例 mod，也不含任何业务功能**：
+
+| 端 | 做什么 | 留下的可断言日志（前缀 `[mcdev_fixture]`） |
+|---|---|---|
+| 服务端 | 注册 `/mcdevfixture`；玩家进服记 tick；100 tick 后没收到握手就点名 | `server side active` / `server got hello from <player>` / `client missing for <player> (no hello in 100 ticks)` |
+| 客户端 | 进世界 20 tick 后自动敲一次 `/mcdevfixture`；听回执；120 tick 没回执就自己判定 | `client side active` / `client sent hello` / `client got ack` / `server missing (no ack in 120 ticks)` |
+
+握手用**玩家命令**而不是自定义 payload：命令注册（`CommandRegistrationCallback`）是 fabric-api 里最稳的一层，回执又天然进日志，于是「对端有没有这一半」变成可直接 grep 的一行 —— 不需要任何 payload 编解码，也就不绑定某个 API 版本。
+
+三条场景分别在 `scenarios/` 下（装入组合见各自的 `description`）：
+
+| 场景 | 装法 | 断言 | 实测 |
+|---|---|---|---|
+| `fixture-both.json` | 两端都装 | 两侧 `/mods` contains + 四条日志（sent → got hello → got ack） | 5/5 PASS（`tmp/devrun-fixture-both`） |
+| `fixture-client-missing.json` | 只装服务端 | 客户端 `/mods` notContains + 服务端日志 `client missing for` + 客户端日志**不该**出现 `client sent hello`/`client got ack`（`expect.textNot`） | 4/4 PASS（`tmp/devrun-fixture-client-missing2`） |
+| `fixture-server-missing.json` | 只装客户端 | 服务端 `/mods` notContains + 客户端 `server missing` + 服务端日志**不该**出现 `server got hello from` | 5/5 PASS（`tmp/devrun-fixture-server-missing2`） |
+
+`expect.textNot` 是这一轮补的第四个断言种类（原始响应体不得包含子串）：日志层面的「不该出现」与字段层面的 `notContains` 对称，缺一侧的证明全靠它 —— 不然「没出现」只能靠人眼看。
+
+**这个 fixture 与具体被测 mod 无关**：它只证明「套件能把『缺一侧』变成 PASS/FAIL」。真实 mod 的握手方式（payload、通道名、超时）各自不同，读它的日志/配置/文档再写断言，照 `docs/examples/` 的思路而不是照抄这三条场景。
+
 ---
 
 ## 10. DSH 插件层（JS）

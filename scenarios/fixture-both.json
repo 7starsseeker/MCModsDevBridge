@@ -1,0 +1,25 @@
+{
+  "name": "fixture-both",
+  "description": "两端都必须有的 mod（lab/fixture）：两端都装时握手成立。装的是测试样本，不是被测业务 mod。",
+  "player": "mcdev",
+  "steps": [
+    { "id": "server-has-fixture", "target": "server", "method": "GET", "path": "/mods",
+      "expect": { "contains": { "data.ids": "mcdev_fixture" } },
+      "note": "服务端确实加载了这一半（/mods 是加载器给的权威清单，不是探针猜的）" },
+    { "id": "client-has-fixture", "target": "client", "method": "GET", "path": "/mods",
+      "expect": { "contains": { "data.ids": "mcdev_fixture" } },
+      "note": "客户端也确实加载了" },
+    { "id": "client-sent-hello", "target": "client", "method": "GET", "path": "/log/tail?n=120",
+      "retry": { "times": 20, "intervalMs": 250 },
+      "expect": { "text": [ "client sent hello" ] },
+      "note": "客户端这一半生效了：主动发出握手" },
+    { "id": "server-got-hello", "target": "server", "method": "GET", "path": "/log/tail?n=200",
+      "retry": { "times": 20, "intervalMs": 250 },
+      "expect": { "text": [ "server got hello from" ] },
+      "note": "服务端收到了握手 —— 两端都装时「生效」有日志证据" },
+    { "id": "client-got-ack", "target": "client", "method": "GET", "path": "/log/tail?n=200",
+      "retry": { "times": 20, "intervalMs": 250 },
+      "expect": { "text": [ "client got ack" ] },
+      "note": "回执回到客户端，闭环" }
+  ]
+}

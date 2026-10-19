@@ -1,0 +1,24 @@
+{
+  "name": "fixture-server-missing",
+  "description": "同一个 fixture 只装在客户端：客户端敲 /mcdevfixture 打不到，应报 server missing。",
+  "player": "mcdev",
+  "steps": [
+    { "id": "client-has-fixture", "target": "client", "method": "GET", "path": "/mods",
+      "expect": { "contains": { "data.ids": "mcdev_fixture" } },
+      "note": "客户端装了" },
+    { "id": "server-lacks-fixture", "target": "server", "method": "GET", "path": "/mods",
+      "expect": { "notContains": { "data.ids": "mcdev_fixture" } },
+      "note": "服务端没装" },
+    { "id": "client-sent-hello", "target": "client", "method": "GET", "path": "/log/tail?n=120",
+      "retry": { "times": 20, "intervalMs": 250 },
+      "expect": { "text": [ "client sent hello" ] },
+      "note": "客户端照样发握手" },
+    { "id": "client-reports-missing", "target": "client", "method": "GET", "path": "/log/tail?n=200",
+      "retry": { "times": 30, "intervalMs": 500 },
+      "expect": { "text": [ "server missing" ] },
+      "note": "没收到回执 ⇒ 客户端这一侧自己判定「服务端那一半不在」" },
+    { "id": "server-never-answered", "target": "server", "method": "GET", "path": "/log/tail?n=200",
+      "expect": { "textNot": [ "server got hello from" ] },
+      "note": "服务端没有这一半：它的日志里不该出现「收到握手」；客户端那条 server missing 才是本用例的正向证据" }
+  ]
+}
