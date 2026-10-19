@@ -555,6 +555,30 @@ platform/<loader>/
 
 **预算：≤400 行 + 1 个 gradle 项目 + 半天。** 超出这个预算说明架构漏了，要修架构而不是硬加。
 
+### 9.2 端组合：加载器不进协议层，`/mods` 才是「装没装上」的证据（2026-10-20 实测）
+
+**结论**：服务端与客户端的加载器可以不同，连接照样成立；真正会拦人的是版本/协议、mod 自定义 payload、以及对端不认识的注册表内容（见 B2 与前置文档 §13 的判定）。所以「两端加载器是否一致」不是连接的前提，而「每端是否真的加载了对应版本的 mod」才是——后者只有 `/mods` 能给出硬证据。
+
+**为此补的两样通用能力**：
+
+| 能力 | 落点 | 为什么 |
+|---|---|---|
+| 客户端 `/status` 增加 `linked` / `inWorld` / `screen` | `ClientProbeServer` | 判断「被踢了 / 没连上」不能看 `player` 或坐标为 null —— 停在标题界面时它们同样是 null；`linked` = `mc.getConnection() != null`，`inWorld` = 有 level 且有 player |
+| `expect.notContains`（点号路径，字符串形式不得包含子串） | `scripts/devrun.ps1` `Compare-Expect` | 「不该出现的没出现」是装错端的唯一判据：服务端装了、客户端没装时，客户端 `/mods` 的 `ids` 不含该 mod |
+
+**四组实测（Fabric 26.3 / Forge 26.3 独立客户端，取证目录均在 `tmp/`）**：
+
+| 组合 | 场景 | 结果 | 取证 |
+|---|---|---|---|
+| 同族，mod 只在服务端 | `/mods` contains(服) + notContains(客) + inWorld | 5/5 PASS | `tmp/devrun-sides-fam` |
+| **跨族**（fabric 服 + forge 客），mod 只在服务端 | 同上，另断言客户端自报 `loader=forge` | 5/5 PASS | `tmp/devrun-sides-cross` |
+| 同族，mod 两端都装 | 两侧 `/mods` 都 contains | 5/5 PASS | `tmp/devrun-sides-both-fam` |
+| 跨族，把 **fabric 版** jar 放进 forge 客户端 mods | 客户端 `/mods` contains 应成立 | **1 条 FAIL（预期）** | `tmp/devrun-sides-both` |
+
+最后一行是本节最有用的一条事实：**装错加载器的 jar 不会报错，加载器只是静默跳过**。客户端照常连上、游戏照常跑，只有 `/mods` 的 `ids` 会少一个 id（实测 `minecraft,mcdev_probe,forge`）。这就是为什么 `/mods` 与 `notContains` 属于能力面而不是某个 mod 的定制：它把「我以为装上了」变成可断言的差异。
+
+`devrun.ps1` 在第 4 步（连接后）打印两端加载器，不一致时额外提示「被测 mod 需要各自加载器的版本」；`summary.md` 的头部也记这一行，取证的人不必翻 `results.json`。
+
 ---
 
 ## 10. DSH 插件层（JS）

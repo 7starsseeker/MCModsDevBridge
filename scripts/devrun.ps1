@@ -398,6 +398,21 @@ function Compare-Expect($Body, $Expect) {
             }
         }
     }
+    # expect.notContains：字段的字符串形式**不能**包含子串。用来断言「不该出现的没出现」——
+    # 例如服务端装了 mod、客户端没装时，客户端 /mods 的 ids 里不该有那个 mod id。
+    # 和 contains 一样，不能跟着 expect.json 一起 early-return。
+    if ($null -ne $Expect.notContains) {
+        try { $json = $Body | ConvertFrom-Json } catch { return @{ Pass = $false; Reason = 'body is not JSON' } }
+        foreach ($key in $Expect.notContains.PSObject.Properties.Name) {
+            $checked++
+            $needle = [string]$Expect.notContains.$key
+            $got = Get-JsonPath $json $key
+            $gotText = if ($null -eq $got) { '' } else { [string]$got }
+            if ($gotText.Contains($needle)) {
+                return @{ Pass = $false; Reason = "json.$key must not contain '$needle' (got '$gotText')" }
+            }
+        }
+    }
     if ($null -eq $Expect.json) { return @{ Pass = $true; Reason = "ok ($checked check(s))" } }
     try { $json = $Body | ConvertFrom-Json } catch { return @{ Pass = $false; Reason = 'body is not JSON' } }
     foreach ($key in $Expect.json.PSObject.Properties.Name) {
@@ -638,6 +653,18 @@ try {
         $player = Wait-Player $ConnectTimeoutSec
         Write-Host "  进入世界：player=$player"
 
+        # 两端加载器各报各的：跨族组合（服务端 fabric + 客户端 forge）在协议层是允许的，
+        # 但 mod 必须有「对应加载器的版本」——放错加载器的 jar 加载器只是静默跳过，
+        # 不报错也就不影响连接，所以「装没装上」只能靠 /mods 断言。
+        $cst = Invoke-Probe $ClientBase 'GET' '/status' $null
+        if ($cst.Status -eq 200) {
+            $cld = ($cst.Body | ConvertFrom-Json).data
+            Write-Host "  客户端加载器：$($cld.loader)（服务端 $Family）"
+            if ($cld.loader -and $cld.loader -ne $Family) {
+                Write-Host '  注意：两端加载器不同 —— 被测 mod 需要各自加载器的版本，装错的 jar 不会加载（用 /mods 的 contains/notContains 断言）'
+            }
+        }
+
         $op = Invoke-Probe $ServerBase 'POST' '/command' (@{ cmd = "op $player" } | ConvertTo-Json -Compress)
         Write-Host "  op $player → $($op.Status)"
         $PhaseTimes['connect'] = ((Get-Date) - $t0).TotalSeconds
@@ -757,6 +784,12 @@ try {
     $lines.Add('')
     $lines.Add("- 玩家：``$player``")
     $lines.Add("- 端口：游戏 $GamePort / 服务端探针 $ServerProbe / 客户端探针 $ClientProbe")
+    $srvLoader = if ($finalServer) { [string]$finalServer.data.loader } else { '-' }
+    $cliLoader = if ($finalClient) { [string]$finalClient.data.loader } else { '-' }
+    $lines.Add("- 加载器：服务端 ``$srvLoader`` / 客户端 ``$cliLoader``")
+    if ($finalClient -and $finalClient.data.loader -and $finalClient.data.loader -ne $srvLoader) {
+        $lines.Add('- 两端加载器不同：被测 mod 需要各自加载器的版本；装错的 jar 会被静默跳过（`/mods` 才是硬证据）。')
+    }
     $lines.Add("- 结论：**PASS=$passCount FAIL=$failCount total=$($Results.Count)**")
     $lines.Add('- 阶段耗时（秒）：' + (($PhaseTimes.GetEnumerator() | ForEach-Object { "$($_.Key)=$([math]::Round($_.Value,1))" }) -join ' / '))
     $lines.Add('')

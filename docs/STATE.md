@@ -40,6 +40,15 @@
 > （要留人眼证据可自己调），但不在判定链里；音效/动画/观感等没有数据通道的东西交给人测。
 > 参考用例：[docs/examples/pairedportals/](examples/pairedportals/)（43 步、每步 `note`，Fabric 43/43 PASS），
 > 演示「功能 → 可断言步骤」的写法思路，**不进能力清单、不随套件默认执行**。
+>
+> **2026-10-20 01:20 增补（端组合实测：加载器不进协议层，`/mods` 才是硬证据）**：客户端 `/status` 加
+> `linked`（`getConnection() != null`）/`inWorld`/`screen` —— 判断「被踢了 / 没连上」不能看 `player` 或坐标
+> 是否为 null，停在标题界面时它们同样是 null；场景 DSL 加 `expect.notContains`（点号路径，字符串形式**不得**
+> 含子串），用来断言「装错端的东西没出现」；`devrun` 连上后打印两端各自自报的加载器，跨族时额外提示
+> 「被测 mod 需要各自加载器的版本」。四组实测：同族仅服端 5/5（`tmp/devrun-sides-fam`）、**跨族 fabric 服 +
+> forge 客 5/5**（`tmp/devrun-sides-cross`）、同族两端都装 5/5（`tmp/devrun-sides-both-fam`）、跨族把 **fabric 版**
+> jar 放进 forge 客 mods（`/mods` 的 `ids` 少一个，1 条**预期** FAIL，`tmp/devrun-sides-both`）。最后一条给出结论：
+> **装错加载器的 jar 加载器只是静默跳过**，连接照常、游戏照常，只有 `/mods` 能把它变成可断言的差异。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
 

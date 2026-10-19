@@ -232,6 +232,15 @@ public final class ClientProbeServer {
                 d.put("gamemode", mc.gameMode == null ? null : String.valueOf(mc.gameMode.getPlayerMode()));
                 d.put("dimension", mc.level == null ? null
                         : mc.level.dimension().identifier().toString());
+                // 连接状态：判断「被服务端踢了 / 还没连上」不能靠玩家名或坐标为 null
+                // （在标题界面它们也是 null），给三个直接可断言的状态。
+                //   linked  = 有 ClientPacketListener（连着某个服务端，哪怕还在下载地形）
+                //   inWorld = 已进世界（level 与 player 都在）
+                //   screen  = 当前界面类名（被踢会停在 DisconnectedScreen）
+                d.put("linked", mc.getConnection() != null);
+                d.put("inWorld", mc.level != null && mc.player != null);
+                Screen screen = mc.gui.screen();
+                d.put("screen", screen == null ? null : screen.getClass().getSimpleName());
                 return d;
             });
             ok(ex, data);
