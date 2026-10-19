@@ -146,6 +146,23 @@ pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端
 判定**只来自探针/日志/API**（方块状态、命令回执、mod 日志、客户端坐标等）。这套工具做的是首轮判断，
 不替代人上手测：音效、动画、观感这类东西没有数据通道，交给人。
 
+## 配合 DSH 的 computer use（可选）
+
+这套件是给 DSH 用的第一轮自动测试：它把「能通过探针/日志/API 判定的部分」跑完，剩下靠人眼的那层交给人。
+**computer use 是 DSH 的官方可选插件**（`@deepseek-ai/dsh-computer-use` 加它的 cua-driver MCP provider），
+不是本套件的能力 —— 本套件**不实现截图**，也不假装自己能模拟真人。
+
+- **部署时**：`setup-wizard.ps1` 会查 `<DSH_HOME>\profiles\*\cordis.patch.yml` 里有没有启用它，把结论写进实例 json 的
+  `computerUse`（`enabled` / `disabled` / `absent` / `unknown`），并打印启用指引（包名两行）；
+  `register-instance.ps1 -ComputerUse auto|on|off` 可以显式指定。查不到就用 `-DshHome` 指路，或设 `DSH_HOME`。
+- **第一轮跑完之后**：`devrun.ps1` 会打印「下一步」，并把同样的内容写进 `results.json` 的 `nextStep`（`ask=true` 表示该问用户）——
+  是直接手测，还是再用 computer use 跑一轮（真实鼠标、真实窗口、真截图）。
+- **它擅长什么**：游戏进程之外的东西（启动器、崩溃框、系统弹窗、窗口本身），以及人眼能看的那层（界面观感、紫屏过渡、tooltip）。
+- **它的代价**：比探针慢一个数量级；MC 的 3D 窗口基本没有 UI 自动化树，只能靠像素和视觉模型；窗口一移动，坐标全失效。
+  所以它**不进判定链**，只在两种时候值得动用：① 首轮绿了，想再走一轮真人路径、顺手留几张图给人看；
+  ② **首轮红了** —— `devrun -KeepRunning` 把服务端和客户端留在原地，再用 computer use 进去截图、看可疑点、读现场状态，
+  比你靠日志猜要快。
+
 ## 许可
 
 原创代码与文档以 **Apache License 2.0** 发布（见 [LICENSE](LICENSE) / [NOTICE](NOTICE)）；派生与骨架部分保留各自许可证，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

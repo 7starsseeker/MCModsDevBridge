@@ -62,6 +62,8 @@ param(
     [string]$ClientGameDir,
     [string]$ClientUsername = 'mcdev',
     [int]$ClientProbePort = 39002,
+    [ValidateSet('auto', 'on', 'off')][string]$ComputerUse = 'auto',
+    [string]$DshHome,
 
     [switch]$Force
 )
@@ -177,6 +179,13 @@ if ($Client -eq 'standalone') {
     }
 }
 
+# computer use：DSH 的官方可选插件，不是本套件的能力。auto = 现查本机状态。
+$cuState = switch ($ComputerUse) {
+    'on' { 'enabled' }
+    'off' { 'declined' }
+    default { (Get-ComputerUseState $DshHome).state }
+}
+
 $cfg = [ordered]@{
     name     = $Name
     loader   = $Loader
@@ -187,6 +196,7 @@ $cfg = [ordered]@{
     javaExe  = $JavaExe
     side     = $Side
     client   = $clientBlock
+    computerUse = $cuState
     notes    = "由 register-instance.ps1 于 $(Get-Date -Format 'yyyy-MM-dd HH:mm') 登记。"
 }
 # 网络：-Proxy 显式给地址；-NoProxy 强制直连。都不给就留空 —— devrun 时按环境变量/系统代理解析。

@@ -11,10 +11,11 @@
 
 - **不复制编排逻辑**：端口、句柄继承、玩家名每次变、世界残留这些坑都在 `scripts/devrun.ps1` 里解决过一次了。插件只做参数校验 + 把输出裁成「结论行 + 取证路径 + summary.md 前几行 + 输出尾巴」。
 - 不自动装自己、不自动重启 DSH。
+- **不实现截图**：真截图与真实鼠标由 DSH 的官方可选插件 computer use 提供。mcdev_devrun 的输出尾巴里会带上 devrun 打印的「下一步」（直接手测 / 再用 computer use 跑一轮；有失败项时 -KeepRunning 留现场再进去看），agent 照它问用户就行。
 
 ## 工作区定位
 
-按顺序找 `scripts/devrun.ps1` 所在目录：`MCDEV_ROOT` 环境变量 → 默认 `<REPO>` → 从工具调用的 `cwd` 往上最多 8 层。三者都不中就直接报错（不猜路径）。
+按顺序找 `scripts/devrun.ps1` 所在目录：安装时写下的 `mcdev-root.txt`（stamp）→ `MCDEV_ROOT` 环境变量 → 从工具调用的 `cwd` 往上最多 8 层。三者都不中就直接报错（不猜路径）。
 
 ## 安装 / 回滚
 

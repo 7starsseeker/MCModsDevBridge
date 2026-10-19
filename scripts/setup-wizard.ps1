@@ -53,6 +53,8 @@ param(
 [string]$ClientExe,
 [int]$ClientProbePort = 39002,
 [string]$Proxy,
+    [string]$DshHome,
+    [switch]$NoComputerUse,
     [switch]$NoProxy,
     [switch]$NonInteractive,
     [switch]$Force
@@ -172,6 +174,15 @@ if (-not (Test-Path $InstanceDir)) { New-Item -ItemType Directory -Force -Path $
 $loaders = if ($Loader -eq 'all') { @('fabric', 'forge', 'neoforge') } else { @($Loader) }
 $written = @()
 
+# ---- computer use（DSH 的官方可选插件）----
+# 它不是本套件的能力：插件在 DSH 侧，能对着真实桌面模拟操作、自己截图。
+# 这里只查状态并记进实例 json，跑完第一轮自动测试时 devrun 据此提示下一步。
+$cuState = if ($NoComputerUse) {
+    [pscustomobject]@{ state = 'declined'; detail = '本次选择不用'; profiles = @() }
+} else {
+    Get-ComputerUseState $DshHome
+}
+
 foreach ($ld in $loaders) {
     $instName = if ($Name) { if ($loaders.Count -gt 1) { "$Name-$ld" } else { $Name } } else { $ld }
     $jsonPath = Join-Path $InstanceDir "$instName.json"
@@ -242,6 +253,7 @@ foreach ($ld in $loaders) {
         gamePort  = $finalGame
         probePort = $finalProbe
         side      = $Side
+        computerUse = $cuState.state
     }
     if ($Side -eq 'client') {
         # 只做客户端：不登记任何服务端启动信息（dir/javaExe/args 都不写，免得以后有人照抄）。
@@ -301,6 +313,19 @@ foreach ($ld in $loaders) {
     $cfg | ConvertTo-Json -Depth 5 | Set-Content -Path $jsonPath -Encoding utf8
     Write-Host "  已写：$jsonPath"
     $written += $instName
+}
+
+Write-Host ''
+switch ($cuState.state) {
+    'enabled' { Write-Host "computer use：已启用（$($cuState.detail)）—— 第一轮自动测试跑完后，devrun 会提示可以再用它跑一轮（真鼠标 + 真截图）。" }
+    'disabled' { Write-Host "computer use：配置在，但被 disabled（$($cuState.detail)）—— 要用就在 DSH 里启用 computer-use 与 computer-use-cua-driver-mcp 两行。" }
+    'absent' {
+        Write-Host "computer use：本机 DSH 没配（$($cuState.detail)）。"
+        Write-Host '  它是 DSH 的官方可选插件：在真实桌面上模拟操作、自带截图，本套件不重复实现截图。'
+        Write-Host '  要启用：给 DSH profile 加 @deepseek-ai/dsh-computer-use 与 @deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp 两行。'
+    }
+    'unknown' { Write-Host "computer use：查不到（$($cuState.detail)）—— 去 DSH 里看插件列表更准。" }
+    'declined' { Write-Host 'computer use：本次按 -NoComputerUse 记作不用。' }
 }
 
 Write-Host ''

@@ -722,6 +722,18 @@ try {
     $serverTail = if (Test-Path $serverOut) { Get-Content $serverOut -Tail 60 } else { @() }
     $clientTail = if (Test-Path $clientOut) { Get-Content $clientOut -Tail 40 } else { @() }
 
+    # 下一步：第一轮自动测试跑完后该干什么。computer use 是 DSH 的官方可选插件
+    # （真鼠标 + 真截图），不归本套件管；这里只把「要不要用它」问出口。
+    $cuState = if ($Cfg.computerUse) { [string]$Cfg.computerUse } else { (Get-ComputerUseState).state }
+    $NextStep = [ordered]@{
+        computerUse = $cuState
+        ask         = ($cuState -eq 'enabled')
+        question    = '第一轮自动测试跑完了：直接手测，还是再用 computer use 跑一轮？'
+        options     = @('直接手测', '用 computer use 再跑一轮（真实鼠标 + 真截图）')
+        hint        = '截图与真实桌面操作由 DSH 的 computer use 提供，本套件不实现截图。'
+        onFailure   = '有失败项时：-KeepRunning 重跑留现场，再用 computer use 进现场看状态/截图找可疑点'
+    }
+
     $resultsPath = Join-Path $EvidenceDir 'results.json'
     [pscustomobject]@{
         family      = $Family
@@ -735,6 +747,7 @@ try {
         steps       = @($Results)
         server      = if ($finalServer) { $finalServer.data } else { $null }
         client      = if ($finalClient) { $finalClient.data } else { $null }
+        nextStep    = $NextStep
     } | ConvertTo-Json -Depth 8 | Set-Content -Path $resultsPath -Encoding utf8
 
     $passCount = @($Results | Where-Object { $_.pass }).Count
@@ -746,6 +759,16 @@ try {
     $lines.Add("- 端口：游戏 $GamePort / 服务端探针 $ServerProbe / 客户端探针 $ClientProbe")
     $lines.Add("- 结论：**PASS=$passCount FAIL=$failCount total=$($Results.Count)**")
     $lines.Add('- 阶段耗时（秒）：' + (($PhaseTimes.GetEnumerator() | ForEach-Object { "$($_.Key)=$([math]::Round($_.Value,1))" }) -join ' / '))
+    $lines.Add('')
+    $lines.Add('## 下一步')
+    $lines.Add('')
+    if ($NextStep.computerUse -eq 'enabled') {
+        $lines.Add('第一轮自动测试跑完了。接下来二选一：① 直接手测；② 再用 DSH 的 computer use 跑一轮（真实鼠标 + 真截图）。')
+        $lines.Add('如果这次有失败项：-KeepRunning 重跑留住现场，再用 computer use 进去截图、看可疑点、读现场状态。')
+        $lines.Add('截图与真实桌面操作由 DSH 的 computer use 提供，本套件不做截图。')
+    } else {
+        $lines.Add('第一轮自动测试跑完了，接下来直接手测。本机没启用 DSH 的 computer use；需要真截图就装那个官方可选插件。')
+    }
     $lines.Add('')
     $lines.Add('| 用例 | 目标 | 请求 | 状态 | 结论 | 说明 | 理由 |')
     $lines.Add('|---|---|---|---:|---|---|---|')
@@ -796,5 +819,17 @@ finally {
         else { Write-Host '  端口已释放' }
     } else {
         Write-Host '  -KeepRunning：保留服务端与客户端'
+    }
+
+    if ($NextStep -and -not $PreflightOnly) {
+        Write-Host ''
+        Write-Host '下一步'
+        if ($NextStep.computerUse -eq 'enabled') {
+            Write-Host '  1) 直接手测'
+            Write-Host '  2) 再用 computer use 跑一轮（真实鼠标 + 真截图；截图由 DSH 侧提供，本套件不实现）'
+            Write-Host '  另：这次有失败项时，-KeepRunning 重跑能留住现场，再用 computer use 进去截图、看可疑点、读现场状态。'
+        } else {
+            Write-Host '  直接手测（本机没启用 DSH 的 computer use；要截图就装那个官方可选插件，然后重跑一次）'
+        }
     }
 }

@@ -24,7 +24,14 @@
 > `tmp/devrun-firstrun`（首次启动自动关掉 `AccessibilityOnboardingScreen`，`closed=True`，随后进 TitleScreen）、
 > `tmp/devrun-client-only` 与 `tmp/devrun-wiz-client`（`side=client`，2/2 PASS，退出码 0）。
 >
-> **2026-10-20 00:55 增补（判定只靠探针/日志；截图不进判定链）**：两端探针加了 `GET /mods`（`id/version/name`，
+> **2026-10-20 01:15 增补（computer use：DSH 的可选插件，本套件只提示不实现）**：真截图与真实桌面操作归 DSH 的官方可选插件
+> computer use（`@deepseek-ai/dsh-computer-use` + cua-driver MCP provider），套件**不重复造截图轮子**。新增
+> `scripts/lib/Env.ps1` 的 `Get-ComputerUseState`（扫 `<DSH_HOME>\profiles\*\cordis.patch.yml`，跳过 `disabled: true`），
+> 向导把它写进实例 json 的 `computerUse` 并打印启用指引，`register-instance.ps1 -ComputerUse auto|on|off` 显式指定；
+> `devrun.ps1` 收尾打印「下一步」并写进 `results.json` 的 `nextStep`（含 `onFailure`：有失败项时 `-KeepRunning` 留现场、
+> 再用 computer use 进去截图/看状态），`summary.md` 同步一段。实测：`tmp/devrun-cu` / `tmp/devrun-cu2` / `tmp/devrun-cu3`
+> （fabric smoke 5/5，退出码 0，`nextStep.computerUse=enabled`）。
+>> **2026-10-20 00:55 增补（判定只靠探针/日志；截图不进判定链）**：两端探针加了 `GET /mods`（`id/version/name`，
 > 另给一行 `ids` 便于子串断言），客户端 `/status` 加了数值坐标 `playerPosX/Y/Z`（原来只有 `Vec3.toString()`
 > 的 `playerPos`，按子串断言要猜格式）。`scripts/devrun.ps1` 的步骤支持 `"note": "这条在验什么"`（进
 > `results.json` 与 `summary.md` 的「说明」列，不参与判定）。
