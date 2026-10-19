@@ -32,6 +32,8 @@
 | `Window.getWindow()` 取 HWND 没了 | `Window.handle()` 返回 `long`，底层换成 **SDL**（`org.lwjgl.sdl.SDL_Event`，不再是 GLFW） | 需要窗口句柄就只能拿 `handle()` 的 long；要窗口事件就按 SDL 写 | `docs/p3-client-record.md:70` |
 | `ClientInput.tick()` 调用后没反应 | 26.3 里它是**空实现**（javap 看到 `Code: 0: return`） | 不要靠 `tick()` 推进输入；直接操作输入状态或用 `ScriptedInput` 那套 | `lab/shared/src/client/java/com/mcdev/probe/action/ScriptedInput.java:13` |
 
+- **`CancellableEventBus#addListener` 有 `Consumer` / `Predicate` 两个重载**：表达式 lambda（`e -> foo(e)`）
+  会报「对 addListener 的引用不明确」，写成块体（`e -> { foo(e); }`）就过。三家事件总线都有类似重载坑。
 - **`mc.gui.screen()` 是被误判过的点**：曾据「`Minecraft.screen` 被删」把 `/ui/*` 五条路由全部降级成
   501，后来实测 `Screen` 只是搬到了 `net.minecraft.client.gui.Gui`，五条路由全部可实现
   （`docs/milestone-2026-10-19-p0-p3.md:95`）。**结论：API 消失 ≠ 能力消失，先找搬家目标再判死刑。**

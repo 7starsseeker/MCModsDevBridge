@@ -39,11 +39,11 @@
 
 | 方法 | 路径 | 能力 | 用途 |
 |---|---|---|---|
-| GET | `/status` | core | 同上（`data.side=client`、`data.actionBackend=client`） |
+| GET | `/status` | core | `side=client`、`loader`、`actionBackend`、`linked`（已连上服务器）、`inWorld`（已进世界）、`screen`（当前界面类名，如 `TitleScreen` / `BackupConfirmScreen`）、`dimension`、`playerPosX/Y/Z`（数值坐标）、`playerPos`（`Vec3.toString()` 字符串，只供显示） |
 | GET | `/mods` | core | 客户端已加载 mod |
 | GET | `/log/tail?n=` | core | 客户端日志尾部 |
 | POST | `/connect?host=&port=` | net | **只认 query**；把客户端接到某个服务器 |
-| POST | `/world/singleplayer` | world | 进单人世界（见源码参数：世界名/种子等） |
+| POST | `/world/singleplayer` | world | 进单人世界：query `name` / `mode=normal\|flat` / `gamemode` / `allowCommands` / `seed` / `reuse` / `backup=ask\|skip\|do`；返回 `levelId` / `worldDir` / `renamed` / `openedExisting` / `backupAction` |
 | POST | `/world/leave` | world | 退出当前世界 |
 | GET | `/ui/snapshot` | client_ui | 读当前 `mc.gui.screen()` 的控件树（type/x/y/w/h/label/active/hovered） |
 | POST | `/ui/click?x=&y=[&button=0]` | client_ui | 按**坐标**点（无 selector/索引）；内部补调 `AbstractWidget.onClick`，详见 `references/ui-and-screenshots.md` |
@@ -67,6 +67,14 @@
 | POST | `/quit` | core | 退出客户端 |
 | POST | `/action/<name>` | action | 客户端动作后端 |
 
+单人世界的三件必知（都踩过）：
+
+- **打开「已有」存档会先弹 `BackupConfirmScreen`**（新建世界不弹）。`backup=ask`（默认）**什么都不点**，
+  `skip` 跳过备份直接进，`do` 真备份一次；`backupAction` 回报实际结果（`ask` / `no-screen` / `skipped` /
+  `backed-up` / `still-blocked`）。默认不替使用者做选择是刻意的。
+- 创建 / 打开是**异步**的：`200` 只代表已提交，就绪判据是 `/status` 的 `inWorld`。
+- 已在世界里再调创建 → `409`；`mode` / `gamemode` / `seed` 非法 → `400`。
+
 客户端动作后端（`ClientActionBackend.actions()`，12 个）：
 `move` `mine` `place` `use` `attack` `pick` `inventory` `gamemode` `ability` `spectate` `respawn` `sleep`
 
@@ -78,7 +86,9 @@
 {"op": "set-selected", "slot": 0}             // /action/inventory 的 op 之一
 ```
 
-## 判定时要记住的两句
+## 判定时要记住的三句
 
 - 客户端动作的真实性由**服务端**证明：客户端说「挖了」，要拿服务端 `/world/block` 回读才算数。
 - 打 `/action/*` 前先看 `/status.data.actions` —— 两家后端动作集合不同，别假设对侧有同名动作。
+- **「提示（不参与判定）」不是判据**：白名单、停在界面层、两端加载器不一致、`backup=ask` 这些都由 `devrun`
+  以提示形式给出；判绿判红只看场景步骤的 `expect`（`results.json` 的 `nextStep` 还带 `affectsVerdict: false`）。

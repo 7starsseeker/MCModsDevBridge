@@ -29,6 +29,8 @@ client-only、跨端、握手、日志证据、`/mods` 对照、加载 ≠ 生�
    它们不是半成品，是探针。
 3. 五个 fixture **都没有 Screen/GUI 类、也没有业务功能**，只有握手日志——fixture 里塞功能，失败时就分不清
    是「机制坏了」还是「功能写错」。
+4. **Forge / NeoForge 版别停在「服务端能加载」**：客户端那一半要用独立客户端真跑一遍
+   （`scenarios/fixtures/fixture-both.json`），否则「两边都装」只证明了「jar 被列出来」。
 
 Fabric 靠 `fabric.mod.json` 的 `entrypoints.client/server` 分端；Forge/NeoForge 只有一个 main source set，
 所以客户端入口只能和主代码同 jar，用**构造器里的 `dist == CLIENT` 守卫**才 `install()`。

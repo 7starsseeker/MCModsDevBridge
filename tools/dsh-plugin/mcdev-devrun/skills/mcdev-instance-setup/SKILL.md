@@ -123,6 +123,9 @@ scripts\install-mod.ps1 -Remove -Target <T>\dev-a
 `standalone` 三个字段：`client.root`（启动器根，含 `versions/`、`libraries/`、`assets/`）、
 `client.version`（`versions/` 下的目录名）、`client.gameDir`（游戏目录，**与 root 分开**，免得污染你自己的 `.minecraft`）。
 启动前会校验 `<gameDir>\config\mcdev-probe.manifest.json` 存在。
+版本清单必须是**启动器合并后的自包含版本**：`Launch.ps1` 显式拒绝 `inheritsFrom`（只支持已展开的
+`libraries` / `arguments`），占位符也只认固定那一批（含 `${library_directory}` / `${classpath_separator}`，
+NeoForge 的清单会用到）。
 
 两侧可以不是一个加载器：`client.loader` 单独写，实例 `loader` 只描述服务端（跨族组合是合法用法）。
 

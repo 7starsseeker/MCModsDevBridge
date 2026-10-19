@@ -56,6 +56,11 @@
 只比 `distanceTo(target)` 会把「落地掉 0.7 格」误判成「被拒」。朝向同理：yaw/pitch 存成归一化角度再比，
 别直接比 359° 与 −1°。
 
+坐标优先用客户端 `/status` 的**数值字段** `playerPosX` / `playerPosY` / `playerPosZ`；`playerPos` 是
+`Vec3.toString()` 的字符串（`(53.5, 100.0, 8.0)`），按子串断言等于猜格式 —— 曾把路径写成
+`data.playerPos.x`（不存在），三条断言一起红。判断「进没进世界 / 有没有被踢」也别看玩家名或坐标是不是
+null（标题界面它们也是 null），用 `inWorld` / `linked` / `screen` 三个字段。
+
 ## 5. 断言模板
 
 ```jsonc

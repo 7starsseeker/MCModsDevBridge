@@ -19,6 +19,10 @@
 | 矩阵跑第二个用例就端口冲突 | 客户端探针端口三家共用 39002，同一时刻只能有一个客户端 | 串行（`devrun-matrix.ps1` 本来就是串行）；先确认上一轮客户端真的退了 |
 | 改了 Java 代码但行为没变（Forge） | [推断] `runClient` 与 `build` 共用输出目录，不重新构建可能还用旧 class | 判「没生效」前先全量构建一次 |
 | `ok:true` 但什么都没发生 | 静默失败（26.3 有多条：`GameType.byName`、创造模式发物品包、空气处 pick、聊天限速…） | 见 `mc26-multiloader-traps` §3，判定一律回读 |
+| 打开已有单人世界后一直进不去，`/status` 的 `screen` 是 `BackupConfirmScreen` | 26.3 打开「已有」存档要你先选「备份再进 / 跳过直接进」；探针默认 `backup=ask` 什么都不点 | 场景里写 `&backup=skip`（或 `do`）；`devrun` 会把这个问题问出来并给三个选项 |
+| 探针拒绝连接，但进程明明在监听 | 探针要 `X-Mcdev-Token`（默认 `mcdev`） | **401 ≠ 没起来**；带 `X-Mcdev-Token: mcdev` 再试 |
+| standalone 客户端启动报参数异常 / 占位符残留 | 版本清单不是启动器合并后的自包含清单 | `Launch.ps1` 只认自包含清单（显式拒绝 `inheritsFrom`），占位符只认固定那一批 |
+| `install-probe -Side client` 报「mods 里没有 fabric-api」 | 它只检查、不下载 | 先把 fabric-api 放进客户端 `mods\` |
 
 ## 检查顺序（照做能省很多时间）
 

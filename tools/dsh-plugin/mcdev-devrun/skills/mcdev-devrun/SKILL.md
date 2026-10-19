@@ -80,6 +80,11 @@ tmp\devrun-<family>-<时间戳>\
 - 判「是不是环境问题」先看 `server.err` 与 `client.out` 尾部，再看 `results.json` 里是哪一步开始红的。
 - 截图不在判定链里（见 §6），要留就自己另存。
 
+**「提示（不参与判定）」不是判据**：`summary.md` 末尾与收尾控制台各有一段提示（白名单、客户端停在界面层、
+两端加载器不一致、跑完的下一步、`backup=ask` 需要你定），`results.json` 里对应 `nextStep`
+（`kind: "hint"` / `affectsVerdict: false`，`backup` 分支是 `kind: "question"`）。这一段可以读、可以照着做，
+但它**不改变**上面那条 `PASS=n FAIL=m` 的结论 —— 判绿判红只由 `steps[]` 的 `expect` 决定。
+
 ## 5. 场景 JSON
 
 语法（`expect` 四种断言、`retry`、`waitMs`、`{{player}}`、`note`）见
