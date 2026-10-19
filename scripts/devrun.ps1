@@ -206,6 +206,10 @@ if (-not $EvidenceDir) {
     $EvidenceDir = Join-Path $Root ("tmp\devrun-{0}-{1}" -f $InstanceName, (Get-Date -Format 'yyyyMMdd-HHmmss'))
 }
 New-Item -ItemType Directory -Force -Path $EvidenceDir | Out-Null
+# 取证目录必须是绝对路径：gradle 客户端由 run-client.ps1 启动，那个壳会先 Set-Location 到
+# lab\<loader>，此时写死的相对路径（`*>` 的重定向目标）会解析到 lab\<loader>\tmp\... ——
+# 目录不存在 ⇒ 壳启动即失败、没有任何输出，外层只能干等 300 秒超时。
+$EvidenceDir = (Resolve-Path -LiteralPath $EvidenceDir).Path
 
 $Results = New-Object System.Collections.ArrayList
 $PhaseTimes = @{}
