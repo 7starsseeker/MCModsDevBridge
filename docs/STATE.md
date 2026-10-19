@@ -8,6 +8,12 @@
 > 部署手册见 [deployment-topology.md](deployment-topology.md)）。
 > 之后的变化都以「增补」段按时间排在下面；**哪一段是终态、哪一段被覆盖，看段落自述**。下次继续请从「新会话从这里读」一节读起。
 >
+> **2026-10-20 04:12 增补（1.0.2 发布；tmp 瘦身；共享缓存跨加载器复验）**：`7f24349` + 版本号 `fd80391` 已推
+> `origin/main`（`v1.0.2` tag，OIDC 发布成功，`dist-tags.latest = 1.0.2`；tgz 66 条目，`lab|instances|dist|tmp` 0 条）。
+> 同一轮清掉 `tmp` 里 937.5 MB 的历史产物（48 份重复 natives 832.7 MB + saves/缓存 41.7 + 旧目录 27 + 一次性日志
+> 1.6 + 残留 PNG 12.5），降到 **21.8 MB**；保留三个在用 gamedir、marketplace 草稿与文档引用的取证目录。
+> `npm pack --dry-run` 复核 65 条目 / 820 KB 解包，`.cache` 与运行时目录 0 条。跨加载器复验：`-Instance cross-fc`
+> （fabric 服 + forge 客）走新缓存 `26.3-Forge-test-x64`，`smoke` **PASS=5 FAIL=0**，取证 87.9 KB。
 > **2026-10-20 03:55 增补（natives 共享缓存）**：`devrun` 起独立客户端时，LWJGL natives 不再解到
 > `<EvidenceDir>\client-natives`，改为 `<仓库根>\.cache\natives\<MC 版本>-<架构>\` 一份共享缓存（`.cache/` 已进
 > `.gitignore`）；同一目录用文件锁串行化（第二个客户端会等，超时给出明确报错而不是让游戏神秘崩溃），启动前
