@@ -3,6 +3,7 @@ package com.mcdev.probe.action;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mcdev.probe.ProbeConfig;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -40,6 +41,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.nio.file.Path;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -1155,16 +1157,22 @@ public final class ClientActionBackend implements ActionBackend {
 
     /** 服务端探针基址；去掉结尾的 {@code /} 免得拼出 {@code //command}。 */
     public static String serverProbeUrl() {
-        String url = System.getProperty(SERVER_PROBE_URL_PROP, DEFAULT_SERVER_PROBE_URL).trim();
+        String url = ProbeConfig.get(clientGameDir(), SERVER_PROBE_URL_PROP, DEFAULT_SERVER_PROBE_URL).trim();
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     private static String serverProbeToken() {
-        return System.getProperty(TOKEN_PROP, "mcdev");
+        return ProbeConfig.get(clientGameDir(), TOKEN_PROP, "mcdev");
     }
 
     private static int serverProbeTimeoutMs() {
-        return Integer.getInteger(SERVER_PROBE_TIMEOUT_PROP, DEFAULT_SERVER_PROBE_TIMEOUT_MS);
+        return ProbeConfig.getInt(clientGameDir(), SERVER_PROBE_TIMEOUT_PROP, DEFAULT_SERVER_PROBE_TIMEOUT_MS);
+    }
+
+    /** 客户端游戏目录：配置文件的落点；取不到时退回 {@code null}（只用系统属性/默认值）。 */
+    private static Path clientGameDir() {
+        Minecraft mc = Minecraft.getInstance();
+        return mc == null || mc.gameDirectory == null ? null : mc.gameDirectory.toPath();
     }
 
     private static HttpClient http() {

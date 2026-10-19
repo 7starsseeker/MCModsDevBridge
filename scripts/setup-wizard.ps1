@@ -46,7 +46,13 @@ param(
     [string[]]$StartArgs = @(),
     [string]$StartExe,
     [string]$ProbeJar,
-    [string]$Proxy,
+[ValidateSet('gradle', 'standalone', 'external', 'none')][string]$ClientMode,
+[string]$ClientRoot,
+[string]$ClientVersion,
+[string]$ClientGameDir,
+[string]$ClientExe,
+[int]$ClientProbePort = 39002,
+[string]$Proxy,
     [switch]$NoProxy,
     [switch]$NonInteractive,
     [switch]$Force
@@ -158,7 +164,7 @@ if (-not $NonInteractive) {
 if (-not $Loader) { throw '缺少 -Loader（fabric|forge|neoforge）' }
 if (-not $Side) { throw '缺少 -Side（client|server|both）' }
 if (-not $Mode) { throw '缺少 -Mode（existing|provision）' }
-if (-not $Dir) { throw '缺少 -Dir' }
+if (-not $Dir -and $Side -ne 'client') { throw '缺少 -Dir（-Side client 可以不给：这次没有服务端目录）' }
 if ($Proxy -and $NoProxy) { throw '-Proxy 与 -NoProxy 不能同时给（要么走代理，要么强制直连）。' }
 
 if (-not (Test-Path $InstanceDir)) { New-Item -ItemType Directory -Force -Path $InstanceDir | Out-Null }
@@ -174,7 +180,10 @@ foreach ($ld in $loaders) {
     }
 
     # ---- 目录检查 / 建骨架 ----
-    if ($Mode -eq 'existing') {
+    if ($Side -eq 'client') {
+        # 只做客户端：不碰任何服务端目录，也不建服务端骨架。
+        Write-Host '  side=client：跳过服务端目录与骨架（这次没有被测服务端）'
+    } elseif ($Mode -eq 'existing') {
         if (-not (Test-Path $Dir)) { throw "目录不存在：$Dir（-Mode existing 必须指向已存在实例）" }
         $markers = Test-LoaderMarkers $Dir
         if ($markers.Count -eq 0) {
@@ -204,7 +213,7 @@ foreach ($ld in $loaders) {
     }
 
     # ---- 端口 ----
-    $finalGame = if ($GamePort) { $GamePort } else {
+    $finalGame = if ($Side -eq 'client') { 0 } elseif ($GamePort) { $GamePort } else {
         $fromProps = Get-PropertiesPort $Dir
         if ($fromProps) { $fromProps } elseif ($NonInteractive) { throw '缺少 -GamePort（目录里也没有 server.properties）' } else { AskPort '游戏端口' 25566 }
     }
@@ -234,7 +243,9 @@ foreach ($ld in $loaders) {
         probePort = $finalProbe
         side      = $Side
     }
-    if ($StartExe) {
+    if ($Side -eq 'client') {
+        # 只做客户端：不登记任何服务端启动信息（dir/javaExe/args 都不写，免得以后有人照抄）。
+    } elseif ($StartExe) {
         $cfg.start = [ordered]@{ exe = $StartExe; args = @($StartArgs) }
     } else {
         $cfg.javaExe = $JavaExe
@@ -248,15 +259,42 @@ foreach ($ld in $loaders) {
     if ($Proxy) { $cfg.proxy = $Proxy }
     if ($NoProxy) { $cfg.noProxy = $true }
     if ($Side -ne 'server') {
-        # 新环境里没有 lab 工程（套件不携带任何 MC 客户端），客户端只能由用户自己的启动器起：
-        # 那就是 client.mode=external —— devrun 不启动任何东西，只等 39002 上的探针上线。
-        $hasLab = Test-Path (Join-Path $Root "lab\$ld")
-        if ($hasLab) {
-            $cfg.client = [ordered]@{ mode = 'gradle'; project = "lab\$ld"; probePort = 39002 }
-        } else {
-            $cfg.client = [ordered]@{ mode = 'external'; probePort = 39002; waitSec = 600 }
-            Write-Host '  ℹ 没找到 lab 工程 ⇒ 客户端登记为 external（用你自己的启动器起，脚本只等探针）'
+        # 客户端三态按登记信息定：
+        #  · 给了 -ClientVersion + -ClientRoot → standalone：套件按启动器的版本清单自己拼命令行启动
+        #  · 给了 -ClientExe → standalone：交给那个 exe（它的命令行里自己带 -D）
+        #  · 本仓有 lab\<loader> 工程 → gradle：改代码即时生效（开发期最常用）
+        #  · 都没有 → external：不启动任何东西，只等用户把自己的客户端打开
+        # 变量名不能叫 $mode：PowerShell 变量大小写不敏感，$Mode 是 existing/provision。
+        $cmode = $ClientMode
+        if (-not $cmode) {
+            if ($ClientVersion -and $ClientRoot) { $cmode = 'standalone' }
+            elseif ($ClientExe) { $cmode = 'standalone' }
+            elseif (Test-Path (Join-Path $Root "lab\$ld")) { $cmode = 'gradle' }
+            else { $cmode = 'external' }
         }
+        $cfg.client = [ordered]@{ mode = $cmode; probePort = $ClientProbePort }
+        switch ($cmode) {
+            'gradle' { $cfg.client.project = "lab\$ld" }
+            'standalone' {
+                if ($ClientVersion) {
+                    if (-not $ClientRoot) { throw '-ClientVersion 需要同时给 -ClientRoot <启动器根目录：含 versions\libraries\assets 的那一层>' }
+                    if (-not (Test-Path (Join-Path $ClientRoot "versions\$ClientVersion\$ClientVersion.json"))) {
+                        throw "版本清单不存在：$(Join-Path $ClientRoot "versions\$ClientVersion\$ClientVersion.json")"
+                    }
+                    $cfg.client.root = (Resolve-Path $ClientRoot).Path
+                    $cfg.client.version = $ClientVersion
+                    if ($ClientGameDir) { $cfg.client.gameDir = $ClientGameDir }
+                } elseif ($ClientExe) {
+                    $cfg.client.exe = $ClientExe
+                } else {
+                    throw '-ClientMode standalone 需要 -ClientRoot + -ClientVersion，或 -ClientExe'
+                }
+            }
+            'external' { $cfg.client.waitSec = 600 }
+            'none' { }
+        }
+        if ($cmode -eq 'external') { Write-Host '  ℹ 客户端登记为 external（用你自己的启动器起，脚本只等探针）' }
+        if ($cmode -eq 'standalone' -and $ClientVersion) { Write-Host "  ℹ 客户端登记为 standalone：$ClientRoot 的 $ClientVersion" }
     }
     $cfg.notes = "向导 $(Get-Date -Format 'yyyy-MM-dd HH:mm') 生成；$ld × $Side × $Mode"
 

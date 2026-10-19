@@ -399,6 +399,13 @@ routes.add(Route.get("/world/block")
 > ③ 场景 DSL 步骤级 `retry: {times, intervalMs}`（通过即早退，`results.json` 记 `attempts`）；
 > ④ 断言加 `expect.contains`（字段包含子串）与 `expect.text`（响应体包含子串）。
 > 自检场景 `scenarios/capabilities.json`（12 条，Fabric 实测 12/12）。
+>
+> **独立客户端（2026-10-20）**：`client.mode` 四态 —— `gradle`（本仓 `runClient`）/
+> `standalone`（`scripts/lib/Launch.ps1` 读 `versions\<版本>\<版本>.json` 拼命令行，**不下载**）/
+> `external`（用户自开，只等 39002）/ `none`。探针配置从 `<gamedir>/config/mcdev-probe.properties`
+> 读（`-D` 覆盖），因为真实启动器不便注入 JVM 参数；`install-probe.ps1` 写 manifest + sha256，
+> `remove-probe.ps1` 只删自己装的东西。实例加 `side: server|client|both`，对应 devrun 起哪几端；
+> 场景里出现对端不存在的步骤时在**加载阶段**拒绝（不是跑到一半才发现）。
 
 这是「玩家操作全集」那 1,000-1,500 行的落点。设计核心是 **一个语义 API + 两个后端**（I5）。
 

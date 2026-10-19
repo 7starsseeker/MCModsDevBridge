@@ -139,18 +139,22 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance dev-a -Scenario scenarios\act
 `provision-instance.ps1` 会顺带写好：`eula.txt`、`server.properties`（端口/离线模式/白名单/gamemode/level-name）、
 `run.ps1`（统一启动入口，devrun 可直接当 `start.exe` 用），并登记 `instances/<name>.json`。
 
-## 5. 客户端怎么来（本期未做，需求已明确）
+## 5. 客户端怎么来（已做）
 
-现状：客户端只能 `gradlew runClient`（首次 60–90 s，Forge 还要先把 assets 下载/拷满）。
+三种形态，登记在实例的 `client.mode`（详见 README「客户端怎么来」）：
 
-要交付给**没有 gradle 工程**的人，需要独立客户端实例：
-```
-客户端目录/mods/mcdev_probe-1.0.0-<loader>.jar
-启动器 JVM 参数：-Dmcdev.probe.client.port=39002 -Dmcdev.probe.token=mcdev
-```
-然后登记 `"client": { "mode": "external", "probePort": 39002, "waitSec": 600 }`。
-收益：启动 15–25 s（vs 60–90 s），不需要 JDK/gradle 源码树。代价：改探针代码要重新打包。
-**选择点（待用户定）**：HMCL profile / 套件自带手写启动壳 / 官方启动器 profile。
+| mode | 谁启动 | 说明 |
+|---|---|---|
+| `gradle` | 套件跑 `lab\<loader>` 的 `runClient` | 开发期改代码即时生效；需要 JDK + 源码树 |
+| `standalone` | 套件按 `versions\<版本>\<版本>.json` 拼命令行 | **不下载任何东西**；缺库直接报错；首次 11–15 s 到主菜单（本机实测） |
+| `external` | 用户自己开 | 任何启动器都能接，只等 39002 |
+
+`standalone` 的字段：`client.root`（启动器根，含 `versions/`、`libraries/`、`assets/`）、`client.version`
+（`versions/` 下的目录名）、`client.gameDir`（客户端游戏目录，可与 root 分开，免得污染用户自己的 `.minecraft`）。
+启动前套件会校验 `<gameDir>\config\mcdev-probe.manifest.json` 存在 —— 探针没装就立刻报错。
+
+探针装卸走 `scripts/install-probe.ps1` / `scripts/remove-probe.ps1`（写 manifest + sha256，卸载只删自己装的东西）。
+首次启动的一次性界面（无障碍向导 / 图形警告）由 `devrun` 在连接前关掉：不写 `options.txt`、不按坐标盲点。
 
 另注：Forge/NeoForge 的客户端资源落在 `%APPDATA%\.minecraft\assets`（Mojang 布局，
 `slimelauncher` 取 `APPDATA` 推导），离线部署时可以从任意现成 `.minecraft/assets` 复制

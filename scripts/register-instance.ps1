@@ -17,8 +17,11 @@
 .PARAMETER Dir
     服务端实例根目录（含 `mods/`、`server.properties`、`libraries/` 或 `fabric-server-launch.jar`）。
 
-.PARAMETER Client
-    客户端形态：gradle（用本仓 lab 工程的 runClient）/ standalone（真实客户端，需 -ClientExe）/ none。
+ .PARAMETER Side
+    被测 mod 装在哪一侧：server（只服）/ client（只客）/ both（两端，默认）。决定 devrun 起哪几端。
+ .PARAMETER Client
+    客户端形态：gradle（用本仓 lab 工程的 runClient）/ standalone（真实客户端，给 -ClientExe，
+    或给 -ClientRoot + -ClientVersion 让套件按启动器的版本清单起）/ none。
 
 .PARAMETER Proxy
     这个实例访问 GitHub / Maven 用的代理地址（如 http://127.0.0.1:7890），写进登记的 `proxy` 字段。
@@ -47,10 +50,17 @@ param(
     [string]$Proxy,
     [switch]$NoProxy,
 
+    [ValidateSet('server', 'client', 'both')]
+    [string]$Side = 'both',
+
     [ValidateSet('gradle', 'standalone', 'none')]
     [string]$Client = 'gradle',
     [string]$ClientProject,
     [string]$ClientExe,
+    [string]$ClientRoot,
+    [string]$ClientVersion,
+    [string]$ClientGameDir,
+    [string]$ClientUsername = 'mcdev',
     [int]$ClientProbePort = 39002,
 
     [switch]$Force
@@ -150,8 +160,21 @@ if ((Test-Path $target) -and -not $Force) {
 $clientBlock = [ordered]@{ mode = $Client; probePort = $ClientProbePort }
 if ($Client -eq 'gradle') { $clientBlock.project = if ($ClientProject) { $ClientProject } else { "lab\$Loader" } }
 if ($Client -eq 'standalone') {
-    if (-not $ClientExe) { throw "-Client standalone 需要 -ClientExe <启动 exe>" }
-    $clientBlock.exe = $ClientExe
+    # 两条路二选一：给 exe（启动器自带命令行），或给 root+version（套件自己按版本清单拼命令行）。
+    if ($ClientVersion) {
+        if (-not $ClientRoot) { throw "-ClientVersion 需要同时给 -ClientRoot <启动器根目录：含 versions\libraries\assets 的那一层>" }
+        if (-not (Test-Path (Join-Path $ClientRoot "versions\$ClientVersion\$ClientVersion.json"))) {
+            throw "版本清单不存在：$(Join-Path $ClientRoot "versions\$ClientVersion\$ClientVersion.json")"
+        }
+        $clientBlock.root = (Resolve-Path $ClientRoot).Path
+        $clientBlock.version = $ClientVersion
+        if ($ClientGameDir) { $clientBlock.gameDir = $ClientGameDir }
+        if ($ClientUsername) { $clientBlock.username = $ClientUsername }
+    } elseif ($ClientExe) {
+        $clientBlock.exe = $ClientExe
+    } else {
+        throw "-Client standalone 需要 -ClientExe <启动 exe>，或 -ClientRoot + -ClientVersion"
+    }
 }
 
 $cfg = [ordered]@{
@@ -162,6 +185,7 @@ $cfg = [ordered]@{
     probePort = $ProbePort
     args     = @($argsList)
     javaExe  = $JavaExe
+    side     = $Side
     client   = $clientBlock
     notes    = "由 register-instance.ps1 于 $(Get-Date -Format 'yyyy-MM-dd HH:mm') 登记。"
 }
@@ -175,7 +199,7 @@ Add-Content -Path $target -Value '' -Encoding utf8
 
 Write-Host ''
 Write-Host "已登记 → $target"
-Write-Host "  loader=$Loader  game=$GamePort  probe=$ProbePort  client=$Client"
+Write-Host "  loader=$Loader  game=$GamePort  probe=$ProbePort  side=$Side  client=$Client"
 Write-Host ''
 Write-Host '接下来：'
 Write-Host "  1) 把探针 jar 放进 $Dir\mods\（或 devrun 时用 -ProbeJar 指定）"

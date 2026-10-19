@@ -1,6 +1,7 @@
 package com.mcdev.probe.fabric;
 
 import com.mcdev.probe.ProbeCommands;
+import com.mcdev.probe.ProbeConfig;
 import com.mcdev.probe.ProbeLog;
 import com.mcdev.probe.ProbeLogs;
 import com.mcdev.probe.ProbeServer;
@@ -10,6 +11,8 @@ import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.server.MinecraftServer;
+
+import java.nio.file.Path;
 
 /**
  * Fabric 侧的加载器入口 —— 平台适配面四样东西里的第一样（入口）。
@@ -40,10 +43,13 @@ public final class McdevProbeFabric implements DedicatedServerModInitializer {
     private void onServerStarted(MinecraftServer server) {
         TickControl.attach(server);
         RunRecorder.start(server);
-        int port = Integer.getInteger("mcdev.probe.port", DEFAULT_PORT);
-        String token = System.getProperty("mcdev.probe.token", DEFAULT_TOKEN);
+        // 端口/口令：config/mcdev-probe.properties 优先于内置默认，-Dmcdev.probe.* 再覆盖它。
+        Path dir = server.getServerDirectory();
         ProbeServer.setLoader("fabric");
-        ProbeServer.start(server, port, token);
+        ProbeServer.start(
+                server,
+                ProbeConfig.getInt(dir, "mcdev.probe.port", DEFAULT_PORT),
+                ProbeConfig.get(dir, "mcdev.probe.token", DEFAULT_TOKEN));
     }
 
     private void onServerStopping(MinecraftServer server) {

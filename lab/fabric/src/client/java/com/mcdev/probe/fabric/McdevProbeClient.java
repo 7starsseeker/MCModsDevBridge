@@ -1,10 +1,13 @@
 package com.mcdev.probe.fabric;
 
 import com.mcdev.probe.ClientProbeServer;
+import com.mcdev.probe.ProbeConfig;
 import com.mcdev.probe.ProbeLogs;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+
+import java.nio.file.Path;
 
 /**
  * Fabric 客户端入口。
@@ -22,10 +25,12 @@ public final class McdevProbeClient implements ClientModInitializer {
     public void onInitializeClient() {
         ProbeLogs.install();
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
-            int port = Integer.getInteger("mcdev.probe.client.port", DEFAULT_CLIENT_PORT);
-            String token = System.getProperty("mcdev.probe.token", DEFAULT_TOKEN);
+            // 端口/口令：config/mcdev-probe.properties 优先于内置默认，-Dmcdev.probe.* 再覆盖它。
+            Path dir = client.gameDirectory.toPath();
             ClientProbeServer.setLoader("fabric");
-            ClientProbeServer.start(port, token);
+            ClientProbeServer.start(
+                    ProbeConfig.getInt(dir, "mcdev.probe.client.port", DEFAULT_CLIENT_PORT),
+                    ProbeConfig.get(dir, "mcdev.probe.token", DEFAULT_TOKEN));
         });
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> ClientProbeServer.stop());
     }

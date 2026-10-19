@@ -51,6 +51,7 @@
 ## 快速开始
 
 前置：JDK 25；一份自己装好的 MC 26.3 服务端目录（**含 `eula.txt` 与 `server.properties` 的那一层**）。
+只做客户端时可以没有服务端目录 —— 实例登记里 `side: client` 就是这种形态。
 
 ```powershell
 # 1) 登记一个实例（交互式向导，或直接用命令行）
@@ -69,6 +70,41 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance local -Scenario scenarios\smo
 ```powershell
 pwsh -NoProfile -File scripts\install-dsh-plugin.ps1 -Mode install
 ```
+
+## 客户端怎么来
+
+客户端有三种形态，选一种写进实例登记的 `client.mode`：
+
+| `client.mode` | 谁启动客户端 | 适合 |
+|---|---|---|
+| `gradle` | 套件跑本仓 `lab\<loader>` 的 `runClient` | 在**本仓里**改探针/改 mod，改完即生效 |
+| `standalone` | 套件按**启动器留下的版本清单**自己拼 java 命令行 | 套件使用者：手里只有一份装好的客户端，没有 gradle 工程 |
+| `external` | 你自己开 | 任何启动器/任何形态，套件只等探针上线 |
+
+`standalone` 是「启动器的最后一步」，不是另一个启动器：它读 `versions\<版本>\<版本>.json`（启动器合并后的自包含清单），
+按 `rules` 过滤库、展开 `${...}` 占位符、拼出 classpath 与参数，然后起 java。**不下载任何东西**，缺库直接报错。
+
+```powershell
+# 装探针到客户端游戏目录（mods/、config/mcdev-probe.properties、安装记录 manifest）
+pwsh -NoProfile -File scripts\install-probe.ps1 -Side client -Loader fabric -Target 'T:\你的客户端目录'
+# 卸载（只删 manifest 登记过、且 sha256 没变的文件；.minecraft 里别的东西一律不碰）
+pwsh -NoProfile -File scripts\remove-probe.ps1 -Target 'T:\你的客户端目录'
+
+# 登记成实例：服务端 + 独立客户端
+pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端目录>' -Side both `
+     -Client standalone -ClientRoot '<HMCL_HOME>' -ClientVersion '26.3-Fabric' `
+     -ClientGameDir '<TARGET_DIR>\mcinst\client-fabric'
+```
+
+几个已经踩过的点：
+
+- **客户端探针端口固定 39002** ⇒ 同一时刻只能有一个客户端在跑（`devrun` 开跑前会清掉占端口的旧进程）。
+- `standalone` 起客户端前会校验 `<客户端目录>\config\mcdev-probe.manifest.json`：没有它直接报错并让你先跑 `install-probe.ps1`
+  —— 「客户端起来了但探针没装」会表现成「等探针超时」，比直接报错贵得多。
+- 首次启动客户端会先弹一次性界面（无障碍向导、图形警告……），`devrun` 会在连接前按界面自己的语义关掉它，
+  **不写你的 `options.txt`**、不按坐标盲点、不认识的界面一律不碰。
+- `side` 决定哪一端在场：`server`（只服）/ `client`（只客，没有服务端可起）/ `both`。场景里出现对端不存在的用例时，
+  `devrun` 在**加载阶段**就报错，不会跑一半才发现。
 
 ### 环境解析约定
 
@@ -89,7 +125,8 @@ pwsh -NoProfile -File scripts\install-dsh-plugin.ps1 -Mode install
 |---|---|
 | `lab/shared/` | 三家共用的探针实现（服务端 / 客户端 / 动作后端 / 命令） |
 | `lab/fabric/` `lab/forge/` `lab/neoforge/` | 三家加载器的构建骨架与入口类 |
-| `scripts/` | `devrun` 编排、实例登记、部署向导、打包、DSH 插件安装 |
+| `scripts/` | `devrun` 编排、实例登记、部署向导、探针装卸（`install-probe` / `remove-probe`）、打包、DSH 插件安装 |
+| `scripts/lib/` | `Env.ps1`（java/代理解析）、`Launch.ps1`（按版本清单拼客户端命令行） |
 | `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities`；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
 | `tools/dsh-plugin/` | DSH 插件（`mcdev_devrun` / `mcdev_scenarios`） |
 | `docs/` | 可行性评估、逐阶段移植记录、部署拓扑、状态总览 |

@@ -13,6 +13,16 @@
 > 由静默回落改为 400）、场景 DSL 步骤级 `retry`、断言 `expect.contains`/`expect.text`。
 > 自检场景 `scenarios/capabilities.json` 在 **Fabric / Forge / NeoForge 三家各实测 12/12 PASS**。G2（服务端
 > `/player/state` 加 `dimension`）按需求方口径**不做**。
+>
+> **2026-10-20 00:40 增补（独立客户端 + 部署范围）**：devrun 现在能起**没有 gradle 工程**的客户端 ——
+> `scripts/lib/Launch.ps1` 读启动器合并后的 `versions\<版本>\<版本>.json`，按 `rules` 过滤库、展开 `${...}`、
+> 拼 classpath 与参数，**不下载任何东西**；`client.mode` 四态 `gradle / standalone / external / none`。
+> 客户端探针配置改读 `<gamedir>/config/mcdev-probe.properties`（`-D` 仍可覆盖），因为真实启动器不便注入 JVM 参数。
+> 装卸走 `scripts/install-probe.ps1` / `remove-probe.ps1`（manifest + sha256，只删自己装的东西）。
+> 实例新增 `side: server|client|both`：`side=client` 时 devrun 不起服、不连接，场景里出现服务端步骤在**加载阶段**报错。
+> 实测证据：`tmp/devrun-standalone`（独立客户端 + 服务端，capabilities 12/12 PASS，客户端 11 s 到探针）、
+> `tmp/devrun-firstrun`（首次启动自动关掉 `AccessibilityOnboardingScreen`，`closed=True`，随后进 TitleScreen）、
+> `tmp/devrun-client-only` 与 `tmp/devrun-wiz-client`（`side=client`，2/2 PASS，退出码 0）。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
 

@@ -174,6 +174,13 @@ function Normalize-Instance($raw, [string]$fallbackName) {
         clientProbePort = if ($client -and $client.probePort) { [int]$client.probePort } else { 39002 }
         clientExe       = if ($client -and $client.exe) { [string]$client.exe } else { $null }
         clientArgs      = if ($client -and $client.args) { @($client.args) } else { @() }
+        # client.mode=standalone 的两条路：给 exe 就用它（启动器自带命令行），
+        # 给 root+version 就按版本清单自己拼 java 命令行（scripts\lib\Launch.ps1）。
+        clientRoot      = if ($client -and $client.root) { [string]$client.root } else { $null }
+        clientVersion   = if ($client -and $client.version) { [string]$client.version } else { $null }
+        clientGameDir   = if ($client -and $client.gameDir) { [string]$client.gameDir } else { $null }
+        clientJavaExe   = if ($client -and $client.javaExe) { [string]$client.javaExe } else { $null }
+        clientUsername  = if ($client -and $client.username) { [string]$client.username } else { 'mcdev' }
         # client.mode=external 时等用户自己把客户端起好；默认 10 分钟（人手动操作比脚本慢得多）
         externalWaitSec = if ($client -and $client.waitSec) { [int]$client.waitSec } else { 600 }
     }
@@ -200,12 +207,18 @@ $ServerBase = "http://127.0.0.1:$ServerProbe"
 # 优先级：-JavaExe > 实例登记 > JAVA_HOME/PATH。全空时 Resolve-JavaExe 报错并说明该设什么。
 $JavaExe = Resolve-JavaExe ($(if ($JavaExe) { $JavaExe } elseif ($Cfg.javaExe) { $Cfg.javaExe } else { '' }))
 $HasClient = ($Cfg.clientMode -ne 'none')
+# side 决定「哪一端在场」：server=只有服（无客户端）、client=只有客（没有服务端可起）、both=两端。
+# 客户端永远由套件或用户提供；side=client 时套件不碰服务端，也不往任何服务端目录写东西。
+$HasServer = ($Cfg.side -ne 'client')
 
-if (-not $ServerDir) {
+if ($HasServer -and -not $ServerDir) {
     throw "实例 '$InstanceName' 没有登记服务端目录：先运行 scripts\setup-wizard.ps1，或 register-instance.ps1 -Dir <服务端目录>（套件不携带任何服务端）"
 }
-if (-not (Test-Path $ServerDir)) {
+if ($HasServer -and -not (Test-Path $ServerDir)) {
     throw "实例 '$InstanceName' 的服务端目录不存在：$ServerDir（先自备一个 $Family 服务端，再登记 instances\$InstanceName.json）"
+}
+if (-not $HasServer -and -not $HasClient) {
+    throw "实例 '$InstanceName' 的 side=client 但又登记 client.mode=none：两端都没有，devrun 无从下手。"
 }
 
 if (-not $EvidenceDir) {
@@ -280,6 +293,65 @@ function Wait-Player([int]$TimeoutSec) {
     throw "客户端在 ${TimeoutSec}s 内没有进入世界（/status.player 一直为空）"
 }
 
+# 客户端启动时先闪过的几个一次性界面（图形警告、无障碍向导……）挡在主菜单前面。
+# /connect 虽然能从任意界面强推进世界，但那样「用户第一次打开看到什么」就没人验过了。
+# 做法：探针读当前界面类型 → 按该界面自己的关闭语义处理（onClose / 点它的继续按钮），
+# 不写 options.txt（会改用户自己的游戏设置）、不按坐标盲点、不认识的界面一律不碰。
+# 这些界面不是立刻出现的（26.3 实测：先进 GenericMessageScreen，再进向导），所以要等，
+# 不能看一眼就下结论；等到主菜单或超时为止。
+$BlockingScreens = @{
+    'AccessibilityOnboardingScreen'    = 'close'
+    'WarningScreen'                    = 'continue'
+    'UnsupportedGraphicsWarningScreen' = 'continue'
+}
+$ContinueLabels = @('continue', 'proceed', 'i understand', 'yes', 'ok', 'done')
+
+function Clear-ClientBlockingScreens([int]$TimeoutSec = 30) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $seen = @{}
+    while ((Get-Date) -lt $deadline) {
+        $snap = Invoke-Probe $ClientBase 'GET' '/ui/snapshot' $null
+        if ($snap.Status -ne 200) { Start-Sleep -Milliseconds 500; continue }
+        $data = ($snap.Body | ConvertFrom-Json).data
+        $screen = [string]$data.screen
+        if (-not $screen) { Start-Sleep -Milliseconds 500; continue }
+        if (-not $seen.ContainsKey($screen)) {
+            $seen[$screen] = $true
+            Write-Host "  当前界面：$screen"
+        }
+        if (-not $BlockingScreens.ContainsKey($screen)) {
+            if ($screen -eq 'TitleScreen') { return }
+            Start-Sleep -Milliseconds 500
+            continue
+        }
+        $action = $BlockingScreens[$screen]
+        if ($action -eq 'close') {
+            $r = Invoke-Probe $ClientBase 'POST' '/ui/close' $null
+            $closed = $false
+            if ($r.Status -eq 200) { $closed = [bool](($r.Body | ConvertFrom-Json).data.closed) }
+            Write-Host "  关掉首启界面 $screen（closed=$closed）"
+            if (-not $closed) { return }
+        } else {
+            $target = $null
+            foreach ($w in @($data.widgets)) {
+                if (-not $w.active) { continue }
+                $label = ([string]$w.label).Trim().ToLowerInvariant()
+                if ($ContinueLabels -contains $label) { $target = $w; break }
+            }
+            if ($null -eq $target) {
+                Write-Host "  界面 $screen 上没有可识别的继续按钮，跳过自动处置"
+                return
+            }
+            $cx = [double]$target.x + [double]$target.w / 2
+            $cy = [double]$target.y + [double]$target.h / 2
+            $r = Invoke-Probe $ClientBase 'POST' "/ui/click?x=$cx&y=$cy" $null
+            Write-Host "  界面 $screen → 点 '$($target.label)'（$($r.Status)）"
+        }
+        Start-Sleep -Milliseconds 800
+    }
+    Write-Host "  首启界面等待 $TimeoutSec s 后结束（客户端未到主菜单）"
+}
+
 function Get-JsonPath($Object, [string]$Path) {
     $cur = $Object
     foreach ($seg in $Path.Split('.')) {
@@ -335,7 +407,8 @@ function Compare-Expect($Body, $Expect) {
 
 try {
     # ---------------- 步骤 1：准备 ----------------
-    Write-Phase "1/6 准备（$Family → $ServerDir，游戏 $GamePort，探针 $ServerProbe）"
+    $where = if ($HasServer) { "$Family → $ServerDir，游戏 $GamePort，探针 $ServerProbe" } else { "$Family → 仅客户端（无服务端），客户端探针 $ClientProbe" }
+    Write-Phase "1/6 准备（$where）"
     $t0 = Get-Date
 
     # 清掉上一轮残留：端口是最可靠的「有没有东西在跑」的判据，比 pid 文件可靠
@@ -361,15 +434,21 @@ try {
     if (-not $probeJar) {
         throw "找不到探针 jar：用 -ProbeJar <路径> 指定，或在 instances\$InstanceName.json 里写 probeJar，或先跑 lab\$Family 的 build"
     }
-    $modsDir = Join-Path $ServerDir 'mods'
-    New-Item -ItemType Directory -Force -Path $modsDir | Out-Null
-    Copy-Item -Path $probeJar -Destination (Join-Path $modsDir 'mcdev_probe-1.0.0.jar') -Force
     Write-Host "  探针 jar: $(Split-Path -Leaf $probeJar) $((Get-Item $probeJar).Length) B"
 
-    foreach ($mod in $Mods) {
-        if (-not (Test-Path $mod)) { throw "被测 mod 不存在：$mod" }
-        Copy-Item $mod (Join-Path $modsDir (Split-Path -Leaf $mod)) -Force
-        Write-Host "  被测 mod: $(Split-Path -Leaf $mod)"
+    if ($HasServer) {
+        $modsDir = Join-Path $ServerDir 'mods'
+        New-Item -ItemType Directory -Force -Path $modsDir | Out-Null
+        Copy-Item -Path $probeJar -Destination (Join-Path $modsDir 'mcdev_probe-1.0.0.jar') -Force
+        foreach ($mod in $Mods) {
+            if (-not (Test-Path $mod)) { throw "被测 mod 不存在：$mod" }
+            Copy-Item $mod (Join-Path $modsDir (Split-Path -Leaf $mod)) -Force
+            Write-Host "  被测 mod: $(Split-Path -Leaf $mod)"
+        }
+    } elseif ($Mods.Count -gt 0) {
+        # side=client 时给 -Mods 没有着落：往哪个客户端的 mods 里放？
+        # 客户端目录由 client.gameDir 决定，但装 mod 是 install-probe/装卸脚本的职责，不在这里猜。
+        Write-Host "  注意：side=client，-Mods 不会自动装进客户端；请先用 scripts\install-probe.ps1 把被测 mod 放进客户端 mods\"
     }
 
     $serverOut = Join-Path $EvidenceDir 'server.out'
@@ -407,6 +486,11 @@ try {
     }
 
     # ---------------- 步骤 2：起服 ----------------
+    if (-not $HasServer) {
+        Write-Phase '2/6 跳过服务端（side=client：这次没有服务端可起）'
+        $PhaseTimes['server'] = 0
+        $serverPid = $null
+    } else {
     Write-Phase '2/6 起服务端'
     $t0 = Get-Date
     # 两种起法，取决于实例登记了什么：
@@ -433,6 +517,7 @@ try {
     $serverJson = $serverStatus.Body | ConvertFrom-Json
     Write-Host "  就绪：loader=$($serverJson.data.loader) probe=$ServerProbe"
     $PhaseTimes['server'] = ((Get-Date) - $t0).TotalSeconds
+    }
 
     # ---------------- 步骤 3：起客户端 ----------------
     # 三态来自实例登记的 client.mode：gradle（本仓 lab 工程的 runClient）/
@@ -453,17 +538,43 @@ try {
         Write-Host '  客户端探针已监听'
         $PhaseTimes['client'] = ((Get-Date) - $t0).TotalSeconds
     } elseif ($Cfg.clientMode -eq 'standalone') {
-        Write-Phase "3/6 起独立客户端（$($Cfg.clientExe)）"
         $t0 = Get-Date
-        if (-not $Cfg.clientExe -or -not (Test-Path $Cfg.clientExe)) {
-            throw "实例 '$InstanceName' 的 client.mode=standalone，但 client.exe 不存在：$($Cfg.clientExe)"
+        $probeArgs = @("-Dmcdev.probe.client.port=$ClientProbe",
+                       "-Dmcdev.probe.server.url=http://127.0.0.1:$ServerProbe")
+        if ($Cfg.clientVersion) {
+            # 按启动器留下的版本清单起客户端：套件不下载、不修补，只把清单翻译成命令行。
+            # 版本/库/资源来自 client.root，mods/config 来自 client.gameDir —— 两者可以分开，
+            # 这样测试客户端不必污染用户自己的游戏目录。
+            if (-not $Cfg.clientRoot) { throw "实例 '$InstanceName' 的 client.mode=standalone 用了 version，但没登记 client.root（启动器根目录：含 versions\libraries\assets 的那一层）。" }
+            $ClientGameDir = if ($Cfg.clientGameDir) { $Cfg.clientGameDir } else { Join-Path $Cfg.clientRoot "versions\$($Cfg.clientVersion)\game" }
+            if (-not (Test-Path -LiteralPath $ClientGameDir)) {
+                throw "客户端游戏目录不存在：$ClientGameDir（先建好，或改用 install-probe 装到一个空目录）"
+            }
+            $clientManifest = Join-Path $ClientGameDir 'config\mcdev-probe.manifest.json'
+            if (-not (Test-Path -LiteralPath $clientManifest)) {
+                throw "这个客户端目录里没有探针的安装记录：$ClientGameDir`n先运行 scripts\install-probe.ps1 -Side client -Target '$ClientGameDir' -Loader $Family"
+            }
+            Write-Phase "3/6 起独立客户端（$($Cfg.clientRoot) 的 $($Cfg.clientVersion) → $ClientGameDir）"
+            . (Join-Path $PSScriptRoot 'lib\Launch.ps1')
+            $clientJava = if ($Cfg.clientJavaExe) { Resolve-JavaExe $Cfg.clientJavaExe } else { $JavaExe }
+            $launch = Build-MinecraftLaunch -Root $Cfg.clientRoot -Version $Cfg.clientVersion `
+                -GameDir $ClientGameDir -NativesDir (Join-Path $EvidenceDir 'client-natives') `
+                -Username $Cfg.clientUsername -JavaExe $clientJava -ExtraJvmArgs $probeArgs
+            $clientPid = (Start-Process -FilePath $launch.JavaExe -ArgumentList $launch.Arguments `
+                    -WorkingDirectory $ClientGameDir -WindowStyle Minimized `
+                    -RedirectStandardOutput $clientOut -RedirectStandardError ($clientOut + '.err') -PassThru).Id
+            Write-Host "  客户端 pid=$clientPid（java $($launch.JavaExe)，日志 $clientOut）"
+        } else {
+            if (-not $Cfg.clientExe -or -not (Test-Path $Cfg.clientExe)) {
+                throw "实例 '$InstanceName' 的 client.mode=standalone，但 client.exe 不存在：$($Cfg.clientExe)（也可以登记 client.root + client.version 让套件按版本清单启动）"
+            }
+            Write-Phase "3/6 起独立客户端（$($Cfg.clientExe)）"
+            $standaloneArgs = $probeArgs + @($Cfg.clientArgs)
+            $clientPid = (Start-Process -FilePath $Cfg.clientExe -ArgumentList $standaloneArgs `
+                    -WindowStyle Hidden -RedirectStandardOutput $clientOut `
+                    -RedirectStandardError ($clientOut + '.err') -PassThru).Id
+            Write-Host "  客户端 pid=$clientPid（日志 $clientOut）"
         }
-        $standaloneArgs = @("-Dmcdev.probe.client.port=$ClientProbe",
-                            "-Dmcdev.probe.server.url=http://127.0.0.1:$ServerProbe") + @($Cfg.clientArgs)
-        $clientPid = (Start-Process -FilePath $Cfg.clientExe -ArgumentList $standaloneArgs `
-                -WindowStyle Hidden -RedirectStandardOutput $clientOut `
-                -RedirectStandardError ($clientOut + '.err') -PassThru).Id
-        Write-Host "  客户端 pid=$clientPid（日志 $clientOut）"
         Wait-Probe $ClientBase '客户端探针' $ClientTimeoutSec | Out-Null
         Write-Host '  客户端探针已监听'
         $PhaseTimes['client'] = ((Get-Date) - $t0).TotalSeconds
@@ -493,10 +604,23 @@ try {
     }
     $PhaseTimes['client'] = ((Get-Date) - $t0).TotalSeconds
 
+    if ($HasClient) {
+        Clear-ClientBlockingScreens
+    }
+
     # ---------------- 步骤 4：连接 ----------------
     if (-not $HasClient) {
         Write-Phase '4/6 跳过连接（无客户端：服务端场景不需要玩家）'
         $player = $null
+        $PhaseTimes['connect'] = 0
+    } elseif (-not $HasServer) {
+        Write-Phase '4/6 跳过连接（side=client：只验客户端本地行为）'
+        $player = $null
+        $st = Invoke-Probe $ClientBase 'GET' '/status' $null
+        $dim = ''
+        if ($st.Status -eq 200) { $dim = [string](($st.Body | ConvertFrom-Json).data.dimension) }
+        if ($dim) { Write-Host "  客户端已在世界内：dimension=$dim" }
+        else { Write-Host '  客户端还没进任何世界（停在界面层）：只适合验证 UI/输入相关能力' }
         $PhaseTimes['connect'] = 0
     } else {
         Write-Phase "4/6 连接 ${GamePort}"
@@ -577,8 +701,14 @@ try {
 
     # ---------------- 步骤 6：取证 ----------------
     Write-Phase '6/6 取证'
-    $finalServer = (Invoke-Probe $ServerBase 'GET' '/status' $null).Body | ConvertFrom-Json
-    $finalClient = if ($HasClient) { (Invoke-Probe $ClientBase 'GET' '/status' $null).Body | ConvertFrom-Json } else { $null }
+    # side=client 没有服务端在跑：此时 /status 是 transport error，硬 ConvertFrom-Json 会崩在
+    # 「Error parsing boolean value」上（body 变成 "transport error: ..."）。
+    $fsRaw = Invoke-Probe $ServerBase 'GET' '/status' $null
+    $finalServer = if ($HasServer -and $fsRaw.Status -eq 200) { $fsRaw.Body | ConvertFrom-Json } else { $null }
+    $finalClient = if ($HasClient) {
+        $fcRaw = Invoke-Probe $ClientBase 'GET' '/status' $null
+        if ($fcRaw.Status -eq 200) { $fcRaw.Body | ConvertFrom-Json } else { $null }
+    } else { $null }
     $serverTail = if (Test-Path $serverOut) { Get-Content $serverOut -Tail 60 } else { @() }
     $clientTail = if (Test-Path $clientOut) { Get-Content $clientOut -Tail 40 } else { @() }
 
@@ -593,7 +723,7 @@ try {
         startedAt   = (Get-Date).ToString('s')
         phaseSeconds = $PhaseTimes
         steps       = @($Results)
-        server      = $finalServer.data
+        server      = if ($finalServer) { $finalServer.data } else { $null }
         client      = if ($finalClient) { $finalClient.data } else { $null }
     } | ConvertTo-Json -Depth 8 | Set-Content -Path $resultsPath -Encoding utf8
 

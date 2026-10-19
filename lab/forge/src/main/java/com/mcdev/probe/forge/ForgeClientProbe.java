@@ -1,10 +1,14 @@
 package com.mcdev.probe.forge;
 
 import com.mcdev.probe.ClientProbeServer;
+import com.mcdev.probe.ProbeConfig;
 import com.mcdev.probe.ProbeLog;
 import com.mcdev.probe.ProbeLogs;
 
+import net.minecraft.client.Minecraft;
 import net.minecraftforge.event.TickEvent;
+
+import java.nio.file.Path;
 
 /**
  * Forge 客户端探针入口 —— 与 Fabric 侧 {@code McdevProbeClient} 对位。
@@ -41,9 +45,11 @@ public final class ForgeClientProbe {
             }
             started = true;
             ClientProbeServer.setLoader("forge");
+            // 端口/口令：config/mcdev-probe.properties 优先于内置默认，-Dmcdev.probe.* 再覆盖它。
+            Path dir = Minecraft.getInstance().gameDirectory.toPath();
             ClientProbeServer.start(
-                    Integer.getInteger("mcdev.probe.client.port", DEFAULT_CLIENT_PORT),
-                    System.getProperty("mcdev.probe.token", DEFAULT_TOKEN));
+                    ProbeConfig.getInt(dir, "mcdev.probe.client.port", DEFAULT_CLIENT_PORT),
+                    ProbeConfig.get(dir, "mcdev.probe.token", DEFAULT_TOKEN));
         });
         ProbeLog.LOGGER.info("Mcdev Probe (Forge) 客户端入口已加载");
     }
