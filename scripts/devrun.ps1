@@ -60,7 +60,8 @@
     pwsh -NoProfile -File scripts\devrun.ps1 -Family fabric -Scenario scenarios\smoke.json
 
 .NOTES
-    前置：lab\<family> 已经 build 过（脚本会复制 lab\<family>\build\libs\mcdev_probe-*.jar），
+    前置：探针 jar 有来源 —— ① lab\<family> 已经 build 过（脚本会复制其 build\libs\mcdev_probe-*.jar）；
+    ② 显式 -ProbeJar <路径>；③ 实例 JSON 里写 probeJar。后两条给「手上没有 lab 工程」的使用者。
     java.exe 按 -JavaExe → $env:JAVA_HOME → PATH 解析（scripts\lib\Env.ps1）；网络需要代理时由本脚本的
     JAVA_TOOL_OPTIONS 负责（-Proxy / 登记里的 proxy / 环境变量 / Windows 系统代理）。
 #>
@@ -481,26 +482,28 @@ try {
     # 套件使用者没有 lab 工程，靠前两条；本仓开发者通常走第三条。
     # 统一成「路径字符串」：三个来源的形态不同（参数是 string、登记项是 string、构建产物是 FileInfo），
     # 曾经因为 lab 分支拿来的是 String 却按 FileInfo 读 .FullName ⇒ Copy-Item 报「参数 Path 为 null」。
-    $probeJar = $null
+    # 局部变量不能叫 $probeJar：PowerShell 变量名大小写不敏感，会把参数 -ProbeJar 覆盖成 null
+    # （真踩过：-ProbeJar 传了也报「找不到探针 jar」）
+    $probeJarPath = $null
     if ($ProbeJar) {
         if (-not (Test-Path $ProbeJar)) { throw "指定的 -ProbeJar 不存在：$ProbeJar" }
-        $probeJar = (Resolve-Path $ProbeJar).Path
+        $probeJarPath = (Resolve-Path $ProbeJar).Path
     } elseif ($Cfg.probeJar -and (Test-Path $Cfg.probeJar)) {
-        $probeJar = (Resolve-Path $Cfg.probeJar).Path
+        $probeJarPath = (Resolve-Path $Cfg.probeJar).Path
     } else {
         $built = Get-ChildItem -Path (Join-Path $Root "lab\$Family\build\libs\*.jar") -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -notlike '*sources*' } | Select-Object -First 1
-        if ($built) { $probeJar = $built.FullName }
+        if ($built) { $probeJarPath = $built.FullName }
     }
-    if (-not $probeJar) {
+    if (-not $probeJarPath) {
         throw "找不到探针 jar：用 -ProbeJar <路径> 指定，或在 instances\$InstanceName.json 里写 probeJar，或先跑 lab\$Family 的 build"
     }
-    Write-Host "  探针 jar: $(Split-Path -Leaf $probeJar) $((Get-Item $probeJar).Length) B"
+    Write-Host "  探针 jar: $(Split-Path -Leaf $probeJarPath) $((Get-Item $probeJarPath).Length) B"
 
     if ($HasServer) {
         $modsDir = Join-Path $ServerDir 'mods'
         New-Item -ItemType Directory -Force -Path $modsDir | Out-Null
-        Copy-Item -Path $probeJar -Destination (Join-Path $modsDir 'mcdev_probe-1.0.0.jar') -Force
+        Copy-Item -Path $probeJarPath -Destination (Join-Path $modsDir 'mcdev_probe-1.0.0.jar') -Force
         foreach ($mod in $Mods) {
             if (-not (Test-Path $mod)) { throw "被测 mod 不存在：$mod" }
             Copy-Item $mod (Join-Path $modsDir (Split-Path -Leaf $mod)) -Force
@@ -541,7 +544,7 @@ try {
         Write-Host "  启动方式  : $(if ($Cfg.startExe) { "start.exe = $($Cfg.startExe) " + ($Cfg.startArgs -join ' ') } else { "$JavaExe " + (@('-Dmcdev.probe.port=…') + $Cfg.args -join ' ') })"
         Write-Host "  客户端    : mode=$($Cfg.clientMode) 探针端口=$ClientProbe$(if ($Cfg.clientMode -eq 'standalone') { " exe=$($Cfg.clientExe)" } elseif ($Cfg.clientMode -eq 'gradle') { " project=$($Cfg.clientProject)" })"
         if ($ClientFamily -ne $Family) { Write-Host "  客户端加载器: $ClientFamily（服务端 $Family，跨族组合）" }
-        Write-Host "  探针 jar  : $probeJar"
+        Write-Host "  探针 jar  : $probeJarPath"
         Write-Host "  场景      : $($sc.name)（$(@($sc.steps).Count) 步：客户端 $($clientSteps.Count) / 服务端 $($serverSteps.Count)）"
         Write-Host '  结论      : 登记可用'
         return

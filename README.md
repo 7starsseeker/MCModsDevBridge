@@ -55,6 +55,11 @@
 前置：JDK 25；一份自己装好的 MC 26.3 服务端目录（**含 `eula.txt` 与 `server.properties` 的那一层**）。
 只做客户端时可以没有服务端目录 —— 实例登记里 `side: client` 就是这种形态。
 
+**探针 jar 从哪来**（`devrun` 要把它放进服务端 `mods\`；客户端侧走 `install-probe.ps1`）：
+
+- 自己构建：`lab\fabric\gradlew.bat build`（forge / neoforge 同理），产物在 `lab\<加载器>\build\libs\mcdev_probe-*.jar`；
+- 或用发布包里的 jar，跑的时候加 `-ProbeJar <路径>`，或在实例 JSON 里写 `probeJar`。
+
 ```powershell
 # 1) 登记一个实例（交互式向导，或直接用命令行）
 pwsh -NoProfile -File scripts\setup-wizard.ps1
