@@ -1,0 +1,15 @@
+# 行尾统一：仓库里一律存 LF，检出也一律 LF —— 不依赖开发机的 core.autocrlf。
+# 例外：Windows 脚本用 CRLF（cmd/PowerShell 的旧工具链对 LF 不友好），二进制文件不参与转换。
+* text=auto eol=lf
+
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.reg   text eol=crlf
+
+*.jar   binary
+*.zip   binary
+*.png   binary
+*.ico   binary
+*.class binary
