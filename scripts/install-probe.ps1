@@ -32,10 +32,10 @@ server 或 client。决定写哪个端口键：server 写 mcdev.probe.port，cli
 只报告将要做什么，不落盘。
 
 .EXAMPLE
-pwsh -File scripts\install-probe.ps1 -Side client -Target 'C:\Users\me\.minecraft' -Loader fabric
+pwsh -File scripts\install-probe.ps1 -Side client -Target '<LAUNCHER_ROOT>\.minecraft' -Loader fabric
 
 .EXAMPLE
-pwsh -File scripts\install-probe.ps1 -Side server -Target '<TARGET_DIR>\dev\test-server' -Loader fabric -Port 39011
+pwsh -File scripts\install-probe.ps1 -Side server -Target '<TARGET_DIR>\test-server' -Loader fabric -Port 39011
 #>
 param(
     [Parameter(Mandatory = $true)][ValidateSet('server', 'client')][string]$Side,

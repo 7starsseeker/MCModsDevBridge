@@ -1,11 +1,12 @@
 # 当前状态与续做入口
 
 > **里程碑已封存：[milestone-2026-10-19-p0-p3.md](milestone-2026-10-19-p0-p3.md)**（可交接状态点）
-> 最后更新：2026-10-19 22:57（**新环境部署链路打通**：`scripts/provision-instance.ps1` 覆盖三种网络形态
+> 本段记录 2026-10-19 22:57 那次里程碑（**新环境部署链路打通**：`scripts/provision-instance.ps1` 覆盖三种网络形态
 > ——直连 / 代理 / 完全离线（`-CheckOnly` 探 7 个端点；实测**只有 `maven.neoforged.net` 直连会 10s 超时，
 > 走 `-Proxy http://127.0.0.1:<PROXY_PORT>` 变 7/7 全通**）；套件加了「不含任何 MC 运行时」的**打包断言**；
 > 编排脚本支持实例登记 `instances/<name>.json`（启动器无关）与纯服务端场景 `scenarios/server-only.json`。
-> 部署手册见 [deployment-topology.md](deployment-topology.md)）。下次继续请从「新会话从这里读」一节读起。
+> 部署手册见 [deployment-topology.md](deployment-topology.md)）。
+> 之后的变化都以「增补」段按时间排在下面；**哪一段是终态、哪一段被覆盖，看段落自述**。下次继续请从「新会话从这里读」一节读起。
 >
 > **2026-10-19 23:45 增补（通用能力 + 覆盖审计）**：`docs/pairedportals-coverage-audit.md` 给出「第三方 mod
 > 全自动化可测性」审计；据此补了四个**通用**能力 —— 客户端 `GET /chat/tail`（读客户端当前聊天/actionbar）、
@@ -97,7 +98,7 @@
 > 运行期打印「客户端加载器：fabric（实例声明 fabric / 服务端 forge）」⇒ 两个方向的跨族都成立。
 > **这一节最值钱的是一次失败**：反向跨族首跑挂在「90s 没进世界」，看着像 forge 不收 fabric 客，实际服务端日志是
 > `You are not white-listed on this server!`（`white-list=true` + `online-mode=false` ⇒ 白名单要写**离线 UUID**，
-> `mcdev` 的离线 UUID 是 `<OFFLINE_UUID>`）。`devrun` 的 `Wait-Player` 超时后现在会抄
+> 名字 `mcdev` 的离线 UUID 要按 `OfflinePlayer:mcdev` 算出来）。`devrun` 的 `Wait-Player` 超时后现在会抄
 > 服务端日志最后几条断开原因、并对白名单单独提示；反例实测（用户名 `intruder`）输出里直接带断开原因 +
 > 提示（`tmp/devrun-wl-probe`，exit 1）。教训：**「连不上」先看服务端日志，别先怀疑加载器**。
 >
@@ -112,9 +113,9 @@
 > 两个入口类都在）；②服务端加载实证 —— `side=server` 临时实例 + 四步场景（`/status` → `/mods` 含 `mcdev_fixture`
 > → `POST /command {"cmd":"mcdevfixture"}` → `/log/tail` 含 `server got hello from`）：forge `tmp\detect-fixture-forge2`
 > **4/4 PASS exit 0**、neoforge `tmp\detect-fixture-neoforge` **4/4 PASS exit 0**，跑完 `install-mod -Remove` 卸干净。
-> **还没证**（别当已证）：客户端那一半没起客户端（`client sent hello` / `client got ack`、三条 `fixture-*` 场景、
+> ~~**还没证**（别当已证）：客户端那一半没起客户端（`client sent hello` / `client got ack`、三条 `fixture-*` 场景、
 > 两条超时路径都只在 Fabric 上验过），Forge/NeoForge 的客户端分支目前只过编译。要补只需拿 `scenarios/fixtures/fixture-both.json`
-> 在对应实例上跑一次，场景不用改。
+> 在对应实例上跑一次，场景不用改。~~ → **已补（见下方 03:05 增补，两家的 5/5 与 4/4 都有取证目录）**。
 >
 > **2026-10-20 03:2x 增补（位置调整、提示化、打开已有世界会先弹确认框）**：三件事，前两件是需求方
 > 2026-10-20 对「套件定位」的直接裁定，第三件是搬家后跑出来的真故障。
@@ -141,7 +142,7 @@
 >   `devrun-matrix -Cases tmp\cases-relocated.json` → `tmp\matrix-relocated2` **2/2 全部符合预期 exit 0**
 >   （case1 5/5、case2 6/6，`world-create` 回 `"backup":"skip","backupAction":"skipped"`，`world-ready` 第 3 次命中）；
 >   `scenarios/singleplayer.json` → `tmp\devrun-sp-relocated` **5/5 PASS exit 0**。
->> **2026-10-20 03:05 增补（上面「还没证」的那些，现在都有证据了）**：Forge/NeoForge 的独立客户端真机跑通，
+> **2026-10-20 03:05 增补（上面「还没证」的那些，现在都有证据了）**：Forge/NeoForge 的独立客户端真机跑通，
 > 三条 `fixture-*` 场景各跑一遍（客户端 gamedir `tmp\client-forge-fixture` / `tmp\client-neoforge-fixture`，
 > 客户端版本 `26.3-Forge-test` / `26.3-NeoForge-test`）：
 > - 两端都装 `scenarios/fixtures/fixture-both.json`：forge `tmp\detect-fix-forge2` **5/5 PASS exit 0**、
@@ -160,7 +161,7 @@
 > `${library_directory}`（`-DlibraryDirectory=...`），Forge/Fabric 的清单没有；`${classpath_separator}` 是顺手按
 > 标准清单补上的。这是**套件的通用缺口**，不是某个加载器的特性。
 > 收尾：两服 `mods\` 与两客户端 `mods\` 的 fixture 都已 `install-mod -Remove` 卸掉，`_fix-*` 临时实例已删；
-> `<MC_ROOT>\Server2\whitelist.json` 里加了 `mcdev`（备份 `whitelist.json.bak-20261020-021254`），
+> `<MC_ROOT>\Server2\whitelist.json` 里加了 `mcdev`（备份 `whitelist.json.bak-<时间戳>`），
 > 因为 `Server2` 开着 `white-list=true`。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
@@ -554,7 +555,7 @@ Gradle（同上或 `systemProp.*`）、外部客户端实例（启动器 JVM 参
 - **`/ui/*` 在 26.1/26.2 是否也一样** —— 26.3 的 `Gui.screen()` 是新位置，26.1/26.2 未核对；
   若旧版放在 `Minecraft` 上，`capabilities` 要按版本派生，而不是按端派生。
 - ~~**fabric-api 依赖留不留**~~ —— **已定：留（用户 2026-10-19）**。理由：Fabric 生态里 fabric-api 事实上是标配，依赖它比自建 loader 原生命令注册便宜得多。执行上必须做对一件事：`fabric.mod.json` 里写 `depends: { "fabric-api": "*" }`，让它缺了**启动即报 `HARD_DEP_NO_CANDIDATE`**，而不是运行到一半 `ClassNotFoundException`（P1 已实测过这个报错形态）。注：fabric-api **不在** loader 内，是独立 mod，所以这条依赖必须显式声明。
-- ~~**Forge / NeoForge 的客户端入口**~~ —— **已落地（2026-10-20 20:45，编译级）**：`@Mod` 构造器里判 `FMLEnvironment.dist == Dist.CLIENT`，NeoForge 用 `ClientStartedEvent`、Forge 用首个 `ClientTickEvent.Post`（EventBus 7 没有 `@Mod.EventBusSubscriber`）。**未做的部分**：两家的 `runClient` 实跑（首次可能触发资源下载），记录 §14.6。
+- ~~**Forge / NeoForge 的客户端入口**~~ —— **已落地（2026-10-20 20:45，编译级）**：`@Mod` 构造器里判 `FMLEnvironment.dist == Dist.CLIENT`，NeoForge 用 `ClientStartedEvent`、Forge 用首个 `ClientTickEvent.Post`（EventBus 7 没有 `@Mod.EventBusSubscriber`）。**实测已补**（2026-10-20）：两家的**独立客户端**（`O:\...\versions\26.3-Forge-test` / `26.3-NeoForge-test` 形态）都真跑过，客户端那一半 5/5、缺一侧 4/4 全绿（`tmp\detect-fix-*`）。**仍未做的**只有 gradle `runClient` 那条路（首次可能触发资源下载）。
 - ~~**`/action/move` 的远端瞬移**~~ —— **已解决（2026-10-19 19:45，用户 m01211 批准）**：新增
   `mode:"server-teleport"`，客户端探针调服务端探针 `/command tp` 代劳，再用 `/player/state` 读回权威坐标。
   56 格外实测 `applied:true, horizontalError:0.0`（708ms）。配置面是 `-Dmcdev.probe.server.url`

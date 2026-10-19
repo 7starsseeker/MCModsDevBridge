@@ -35,7 +35,7 @@ natives 解压目录，必须已存在或可创建。
 追加到 JVM 参数里的项（探针的 -Dmcdev.probe.* 走这里）。
 
 .EXAMPLE
-$c = Build-MinecraftLaunch -Root 'C:\Users\me\.minecraft' -Version '26.3-Fabric' -GameDir '<TARGET_DIR>\mc\client-a' -NativesDir '<TARGET_DIR>\mc\natives'
+$c = Build-MinecraftLaunch -Root '<LAUNCHER_ROOT>\.minecraft' -Version '26.3-Fabric' -GameDir '<TARGET_DIR>\client-a' -NativesDir '<TARGET_DIR>\natives'
 & $c.JavaExe @($c.Arguments)
 #>
 

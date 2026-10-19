@@ -21,7 +21,7 @@
 只报告将删什么，不落盘。
 
 .EXAMPLE
-pwsh -File scripts\remove-probe.ps1 -Target 'C:\Users\me\.minecraft'
+pwsh -File scripts\remove-probe.ps1 -Target '<LAUNCHER_ROOT>\.minecraft'
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Target,

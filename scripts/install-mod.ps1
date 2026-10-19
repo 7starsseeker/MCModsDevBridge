@@ -34,13 +34,13 @@
 只打印将要做什么，不落盘。
 
 .EXAMPLE
-pwsh -File scripts\install-mod.ps1 -Side server -Target '<TARGET_DIR>\dev\test-server' -Jar '<TARGET_DIR>\PairedPortals\build\libs\pairedportals-1.0.0.jar'
+pwsh -File scripts\install-mod.ps1 -Side server -Target '<TARGET_DIR>\test-server' -Jar '.\build\libs\mymod-1.0.0.jar'
 
 .EXAMPLE
-pwsh -File scripts\install-mod.ps1 -Side client -Target '<TARGET_DIR>\dev\client' -Jar .\build\libs\mymod-1.0.0.jar, .\build\libs\mylib-2.0.0.jar
+pwsh -File scripts\install-mod.ps1 -Side client -Target '<TARGET_DIR>\client' -Jar .\build\libs\mymod-1.0.0.jar, .\build\libs\mylib-2.0.0.jar
 
 .EXAMPLE
-pwsh -File scripts\install-mod.ps1 -Target '<TARGET_DIR>\dev\client' -Remove
+pwsh -File scripts\install-mod.ps1 -Target '<TARGET_DIR>\client' -Remove
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Target,
