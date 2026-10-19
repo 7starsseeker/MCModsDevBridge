@@ -160,6 +160,9 @@ function Normalize-Instance($raw, [string]$fallbackName) {
     $loader = if ($raw.loader) { [string]$raw.loader } else { $fallbackName }
     $side = if ($raw.side) { [string]$raw.side } else { 'both' }
     $client = $raw.client
+    # 客户端加载器：默认跟服务端同一个 family；跨族实例用 client.loader 显式声明，
+    # 免得「客户端是 forge 但 project/安装提示都按 fabric 走」这种别扭。
+    $clientLoader = if ($client -and $client.loader) { [string]$client.loader } else { $loader }
     return [pscustomobject]@{
         name            = if ($raw.name) { [string]$raw.name } else { $fallbackName }
         loader          = $loader
@@ -178,7 +181,8 @@ function Normalize-Instance($raw, [string]$fallbackName) {
         # 客户端三态：gradle（本仓 lab 工程的 runClient）/ standalone（真实客户端实例）/ none（只测服务端）
         # side=server 的实例**没有客户端**：仅服务端环境不该因为「默认值」去起客户端。
         clientMode      = if ($side -eq 'server') { 'none' } elseif ($client -and $client.mode) { [string]$client.mode } else { 'gradle' }
-        clientProject   = if ($client -and $client.project) { [string]$client.project } else { "lab\$loader" }
+        clientLoader    = $clientLoader
+        clientProject   = if ($client -and $client.project) { [string]$client.project } else { "lab\$clientLoader" }
         clientProbePort = if ($client -and $client.probePort) { [int]$client.probePort } else { 39002 }
         clientExe       = if ($client -and $client.exe) { [string]$client.exe } else { $null }
         clientArgs      = if ($client -and $client.args) { @($client.args) } else { @() }
@@ -206,6 +210,8 @@ if ($null -eq $rawCfg) {
 $Cfg = Normalize-Instance $rawCfg $Spec
 $InstanceName = $Cfg.name
 $Family = $Cfg.loader
+# 客户端加载器不一定等于服务端：跨族实例（fabric 服 + forge 客）靠 client.loader 声明。
+$ClientFamily = $Cfg.clientLoader
 $ServerDir = $Cfg.dir
 $GamePort = $Cfg.gamePort
 $ServerProbe = $Cfg.probePort
@@ -514,6 +520,7 @@ try {
         Write-Host "  游戏端口  : $GamePort    探针端口: $ServerProbe"
         Write-Host "  启动方式  : $(if ($Cfg.startExe) { "start.exe = $($Cfg.startExe) " + ($Cfg.startArgs -join ' ') } else { "$JavaExe " + (@('-Dmcdev.probe.port=…') + $Cfg.args -join ' ') })"
         Write-Host "  客户端    : mode=$($Cfg.clientMode) 探针端口=$ClientProbe$(if ($Cfg.clientMode -eq 'standalone') { " exe=$($Cfg.clientExe)" } elseif ($Cfg.clientMode -eq 'gradle') { " project=$($Cfg.clientProject)" })"
+        if ($ClientFamily -ne $Family) { Write-Host "  客户端加载器: $ClientFamily（服务端 $Family，跨族组合）" }
         Write-Host "  探针 jar  : $probeJar"
         Write-Host "  场景      : $($sc.name)（$(@($sc.steps).Count) 步：客户端 $($clientSteps.Count) / 服务端 $($serverSteps.Count)）"
         Write-Host '  结论      : 登记可用'
@@ -587,7 +594,7 @@ try {
             }
             $clientManifest = Join-Path $ClientGameDir 'config\mcdev-probe.manifest.json'
             if (-not (Test-Path -LiteralPath $clientManifest)) {
-                throw "这个客户端目录里没有探针的安装记录：$ClientGameDir`n先运行 scripts\install-probe.ps1 -Side client -Target '$ClientGameDir' -Loader $Family"
+                throw "这个客户端目录里没有探针的安装记录：$ClientGameDir`n先运行 scripts\install-probe.ps1 -Side client -Target '$ClientGameDir' -Loader $ClientFamily"
             }
             Write-Phase "3/6 起独立客户端（$($Cfg.clientRoot) 的 $($Cfg.clientVersion) → $ClientGameDir）"
             . (Join-Path $PSScriptRoot 'lib\Launch.ps1')
@@ -672,7 +679,10 @@ try {
         $cst = Invoke-Probe $ClientBase 'GET' '/status' $null
         if ($cst.Status -eq 200) {
             $cld = ($cst.Body | ConvertFrom-Json).data
-            Write-Host "  客户端加载器：$($cld.loader)（服务端 $Family）"
+            Write-Host "  客户端加载器：$($cld.loader)（实例声明 $ClientFamily / 服务端 $Family）"
+            if ($cld.loader -and $cld.loader -ne $ClientFamily) {
+                Write-Host "  注意：客户端探针报的加载器与实例声明的 client.loader（$ClientFamily）不一致 —— 检查 client.version / 装进去的探针 jar"
+            }
             if ($cld.loader -and $cld.loader -ne $Family) {
                 Write-Host '  注意：两端加载器不同 —— 被测 mod 需要各自加载器的版本，装错的 jar 不会加载（用 /mods 的 contains/notContains 断言）'
             }
@@ -777,6 +787,7 @@ try {
     $resultsPath = Join-Path $EvidenceDir 'results.json'
     [pscustomobject]@{
         family      = $Family
+        clientFamily = $ClientFamily
         scenario    = $sc.name
         player      = $player
         gamePort    = $GamePort

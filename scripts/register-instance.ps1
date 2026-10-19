@@ -61,6 +61,9 @@ param(
     [string]$ClientVersion,
     [string]$ClientGameDir,
     [string]$ClientUsername = 'mcdev',
+    # 客户端加载器：不给就跟着服务端 -Loader 走；跨族组合（fabric 服 + forge 客）显式给。
+    [ValidateSet('fabric', 'forge', 'neoforge')]
+    [string]$ClientLoader,
     [int]$ClientProbePort = 39002,
     [ValidateSet('auto', 'on', 'off')][string]$ComputerUse = 'auto',
     [string]$DshHome,
@@ -97,7 +100,13 @@ function Detect-Loader {
 
 $detected = Detect-Loader
 if ($Loader -eq 'auto') {
-    if (-not $detected) { throw "无法从目录结构判断加载器：$Dir。请用 -Loader fabric|forge|neoforge 明确指定。" }
+    if (-not $detected) {
+        if (-not $Dir) {
+            # side=client 没有服务端目录可探测，加载器只能显式给（它决定装哪个加载器的探针）。
+            throw "side=client 没有目录可探测，请用 -Loader fabric|forge|neoforge 明确指定客户端加载器。"
+        }
+        throw "无法从目录结构判断加载器：$Dir。请用 -Loader fabric|forge|neoforge 明确指定。"
+    }
     $Loader = $detected
     Write-Host "探测到加载器：$Loader"
 } elseif ($detected -and $detected -ne $Loader) {
@@ -169,7 +178,8 @@ if ((Test-Path $target) -and -not $Force) {
 }
 
 $clientBlock = [ordered]@{ mode = $Client; probePort = $ClientProbePort }
-if ($Client -eq 'gradle') { $clientBlock.project = if ($ClientProject) { $ClientProject } else { "lab\$Loader" } }
+if ($Client -eq 'gradle') { $clientBlock.project = if ($ClientProject) { $ClientProject } else { "lab\$(if ($ClientLoader) { $ClientLoader } else { $Loader })" } }
+if ($ClientLoader) { $clientBlock.loader = $ClientLoader }
 if ($Client -eq 'standalone') {
     # 两条路二选一：给 exe（启动器自带命令行），或给 root+version（套件自己按版本清单拼命令行）。
     if ($ClientVersion) {
@@ -218,11 +228,12 @@ Add-Content -Path $target -Value '' -Encoding utf8
 
 Write-Host ''
 Write-Host "已登记 → $target"
-Write-Host "  loader=$Loader  game=$GamePort  probe=$ProbePort  side=$Side  client=$Client"
+Write-Host "  loader=$Loader$(if ($ClientLoader) { "  client.loader=$ClientLoader" })  game=$GamePort  probe=$ProbePort  side=$Side  client=$Client"
 Write-Host ''
 Write-Host '接下来：'
 if ($Side -eq 'client') {
-    Write-Host "  1) 把探针装进客户端游戏目录：scripts\install-probe.ps1 -Side client -Loader $Loader -Target <gamedir> -Jar <探针 jar>"
+    $clientLoaderHint = if ($ClientLoader) { $ClientLoader } else { $Loader }
+    Write-Host "  1) 把探针装进客户端游戏目录：scripts\install-probe.ps1 -Side client -Loader $clientLoaderHint -Target <gamedir> -Jar <探针 jar>"
     Write-Host "  2) 跑：pwsh -NoProfile -File scripts\devrun.ps1 -Instance $Name -Scenario <场景>"
 } else {
     Write-Host "  1) 把探针 jar 放进 $Dir\mods\（或 devrun 时用 -ProbeJar 指定）"

@@ -1,0 +1,47 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+// 「只有客户端一半」的最小 fixture：存在的唯一目的，是让
+// 「仅客户端 mod 在单人世界/连服时照样生效，而服务端根本没有它」变成可断言的事实。
+// 它不提供任何被测试的功能，也不该被当成示例 mod —— 参考写法在 docs/examples/ 下。
+// 注意 fabric.mod.json 里 environment 是 "client"、只有 client 入口、没有 server 入口：
+// 专用服上它连加载都不会加载，这正是这条样本要证明的点。
+base {
+	archivesName = 'mcdev_fixture_client'
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"mcdev_fixture_client" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}

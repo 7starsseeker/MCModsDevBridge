@@ -1,0 +1,41 @@
+{
+  "name": "fixture-client-only-server",
+  "description": "仅客户端 mod（lab/fixture-client）连一个**没有**它的专用服：服务端 /mods 里没有它，客户端这一半却照样活跃 ⇒ 「服务端也必须装」对这类 mod 不成立。",
+  "player": "mcdev",
+  "steps": [
+    {
+      "id": "server-lacks-fixture",
+      "target": "server",
+      "method": "GET",
+      "path": "/mods",
+      "expect": { "notContains": { "data.ids": "mcdev_fixture_client" } },
+      "note": "environment=client 的 mod 在专用服上连加载都不加载，这是它的语义"
+    },
+    {
+      "id": "client-has-fixture",
+      "target": "client",
+      "method": "GET",
+      "path": "/mods",
+      "expect": { "contains": { "data.ids": "mcdev_fixture_client" } },
+      "note": "同一份 mod 在客户端上是在的 —— 两侧 /mods 分别看，才分得清「谁有谁没有」"
+    },
+    {
+      "id": "client-log-joined",
+      "target": "client",
+      "method": "GET",
+      "path": "/log/tail?n=200",
+      "retry": { "times": 30, "intervalMs": 500 },
+      "expect": { "text": [ "joined world (client-only half)" ] },
+      "note": "连服也算进世界：客户端这一半被服务端「连线」唤醒了"
+    },
+    {
+      "id": "client-log-tick",
+      "target": "client",
+      "method": "GET",
+      "path": "/log/tail?n=200",
+      "retry": { "times": 20, "intervalMs": 500 },
+      "expect": { "text": [ "tick probe alive (client-only)" ] },
+      "note": "而且真的在 tick：不是「加载完就躺平」"
+    }
+  ]
+}

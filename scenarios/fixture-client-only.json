@@ -1,0 +1,57 @@
+{
+  "name": "fixture-client-only",
+  "description": "仅客户端 mod（lab/fixture-client，environment=client）在单人世界里照样生效：内置服务端那一半根本不加载它，客户端这一半该活。整条场景只打客户端探针（实例 side=client）。",
+  "steps": [
+    {
+      "id": "world-create",
+      "target": "client",
+      "method": "POST",
+      "path": "/world/singleplayer?mode=flat&name=mcdev-sp-client&reuse=true",
+      "expect": { "status": 200, "contains": { "data.mode": "flat" } },
+      "note": "客户端自己起内置服务端（专用服不参与）"
+    },
+    {
+      "id": "world-ready",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "retry": { "times": 60, "intervalMs": 500 },
+      "expect": { "status": 200, "json": { "data.inWorld": true } },
+      "note": "inWorld 是就绪判据：level 与 player 都到位"
+    },
+    {
+      "id": "client-has-fixture",
+      "target": "client",
+      "method": "GET",
+      "path": "/mods",
+      "expect": { "contains": { "data.ids": "mcdev_fixture_client" } },
+      "note": "客户端加载器确实加载了这一半（/mods 是加载器给的清单）"
+    },
+    {
+      "id": "client-log-joined",
+      "target": "client",
+      "method": "GET",
+      "path": "/log/tail?n=200",
+      "retry": { "times": 30, "intervalMs": 500 },
+      "expect": { "text": [ "joined world (client-only half)" ] },
+      "note": "进世界事件到了客户端这一半 —— 单人世界也算「进世界」"
+    },
+    {
+      "id": "client-log-tick",
+      "target": "client",
+      "method": "GET",
+      "path": "/log/tail?n=200",
+      "retry": { "times": 20, "intervalMs": 500 },
+      "expect": { "text": [ "tick probe alive (client-only)" ] },
+      "note": "不只是加载，tick 也在跑：加载 ≠ 生效"
+    },
+    {
+      "id": "world-leave",
+      "target": "client",
+      "method": "POST",
+      "path": "/world/leave",
+      "expect": { "status": 200, "json": { "data.left": true } },
+      "note": "退出到标题，给下一条场景留干净的客户端状态"
+    }
+  ]
+}

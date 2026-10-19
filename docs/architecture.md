@@ -632,6 +632,32 @@ platform/<loader>/
 **它的证词边界**：单人世界里的内置服务端同样加载 `environment: "*"` 的 mod，所以它证明的是「装在同一份客户端里时生效」，
 不等于「专用服没装这个 mod 时的表现」—— 后者只能靠两台实例各自的 `/mods`（§9.2）。
 
+### 9.5 只有客户端一半的 mod + `client.loader`：跨族不再只能「碰运气」（2026-10-20 实测）
+
+四类 mod 里，②「只有客户端才有意义」的样本至此才补齐。`lab/fixture-client/`（Fabric，3.0 KB）的
+`fabric.mod.json` 是 `"environment": "client"`、**只有 client 入口、没有 server 入口**；
+它在 `onInitializeClient` 里记 `[mcdev_fixture_client] client side active`，在 `ClientPlayConnectionEvents.JOIN` 里记
+`joined world (client-only half)`，进世界 20 tick 后再记 `tick probe alive (client-only)`
+—— 「加载」与「真的在跑」被拆成两行日志，不靠猜。
+
+两条场景分别钉住语义（都不需要专用服或只需要一台没有它的专用服）：
+
+| 场景 | 实例 | 断言 |
+|---|---|---|
+| `scenarios/fixture-client-only.json`（6 步） | `side=client`（单人世界） | 建世界 → `inWorld` → 客户端 `/mods` 有它 → 日志 `joined world (client-only half)` → 日志 `tick probe alive (client-only)` → 退出 |
+| `scenarios/fixture-client-only-server.json`（4 步） | `side=both`（专用服没有它） | 服务端 `/mods` **notContains** 它 + 客户端 `/mods` **contains** 它 + 客户端两条日志照旧 ⇒ 「服务端也必须装」对这类 mod 不成立 |
+
+实测：单人世界 **6/6 PASS**（`tmp/devrun-fix-client-sp`）、连专用服 **4/4 PASS**（`tmp/devrun-fix-client-srv`），都是 exit 0。
+
+**同一条补丁里拆开了加载器**：实例登记新增 `client.loader`（`register-instance.ps1 -ClientLoader`、
+`setup-wizard.ps1 -ClientLoader`、实例 json 里的 `client.loader`），不给就默认等于服务端 `loader`。
+它决定三件事：`gradle` 形态跑哪个 `lab\<loader>` 工程、安装提示里让你用哪个 `-Loader`、以及运行期
+「客户端探针报的加载器 ≠ 实例声明的加载器」时的警告。此前客户端加载器只能从 `client.version` 的版本名里猜，
+跨族实例（fabric 服 + forge 客）在预检里根本看不出客户端是哪一族。
+实测 `instances/cross-fc.json`（`loader: fabric` + `client.loader: forge`）：预检打印
+「客户端加载器: forge（服务端 fabric，跨族组合）」，运行期打印「客户端加载器：forge（实例声明 forge / 服务端 fabric）」+
+跨族提示行且**不**误报「与实例声明不一致」，`scenarios/smoke.json` 5/5 PASS（`tmp/devrun-cross-split`）。
+
 ---
 
 ## 10. DSH 插件层（JS）

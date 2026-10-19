@@ -96,6 +96,16 @@ pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端
      -ClientGameDir '<TARGET_DIR>\mcinst\client-fabric'
 ```
 
+**跨族组合**（服务端 fabric + 客户端 forge，或反过来）要在 `client` 块里显式写 `"loader": "forge"`：
+
+```jsonc
+"client": { "mode": "standalone", "loader": "forge", "version": "26.3-Forge-test", "root": "<HMCL_HOME>" }
+```
+
+不给就默认跟服务端 `loader` 一样。它决定三件事：`gradle` 形态跑哪个 `lab\<loader>` 工程、安装提示里让你用哪个 `-Loader`、
+以及运行期「客户端探针报的加载器 ≠ 实例声明的加载器」时给的警告。**加载器不进协议层**，所以跨族能连上；
+但被测 mod 必须有对应加载器的版本，装错的 jar 被静默跳过 —— 这只有两侧 `/mods` 断言能发现。
+
 几个已经踩过的点：
 
 - **客户端探针端口固定 39002** ⇒ 同一时刻只能有一个客户端在跑（`devrun` 开跑前会清掉占端口的旧进程）。
@@ -152,11 +162,12 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\single
 | `lab/fabric/` `lab/forge/` `lab/neoforge/` | 三家加载器的构建骨架与入口类 |
 | `scripts/` | `devrun` 编排、实例登记、部署向导、探针装卸（`install-probe` / `remove-probe`）、打包、DSH 插件安装 |
 | `scripts/lib/` | `Env.ps1`（java/代理解析）、`Launch.ps1`（按版本清单拼客户端命令行） |
-| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities` / `singleplayer`；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
+| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities` / `singleplayer` / `fixture-*`；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
 | `tools/dsh-plugin/` | DSH 插件（`mcdev_devrun` / `mcdev_scenarios`） |
 | `docs/` | 可行性评估、逐阶段移植记录、部署拓扑、状态总览 |
 | `docs/examples/` | **参考资料**，不是能力清单：拿一个具体 mod 演示「功能 → 可断言步骤」怎么写（见下节） |
 | `lab/fixture/` | **测试样本 mod（Fabric，6.8 KB）**：唯一用途是证明「两端都必须有的 mod」能被断言 —— 服务端等握手、客户端发握手，缺一侧就写日志。不是示例 mod，也不是能力清单 |
+| `lab/fixture-client/` | **测试样本 mod（Fabric，3.0 KB，`environment: "client"`）**：证明「只有客户端一半」的 mod 在单人世界/连服时照样生效，而服务端 `/mods` 里根本没有它 |
 
 先读 [docs/STATE.md](docs/STATE.md) 了解当前进度；[docs/architecture.md](docs/architecture.md) 讲整体设计；[docs/deployment-topology.md](docs/deployment-topology.md) 讲实例与端口分配。
 

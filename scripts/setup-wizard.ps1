@@ -52,6 +52,8 @@ param(
 [string]$ClientGameDir,
 [string]$ClientExe,
 [int]$ClientProbePort = 39002,
+# 客户端加载器：不给就跟服务端 -Loader 一样；跨族组合（fabric 服 + forge 客）显式给。
+[ValidateSet('fabric', 'forge', 'neoforge')][string]$ClientLoader,
 [string]$Proxy,
     [string]$DshHome,
     [switch]$NoComputerUse,
@@ -285,8 +287,9 @@ foreach ($ld in $loaders) {
             else { $cmode = 'external' }
         }
         $cfg.client = [ordered]@{ mode = $cmode; probePort = $ClientProbePort }
+        if ($ClientLoader) { $cfg.client.loader = $ClientLoader }
         switch ($cmode) {
-            'gradle' { $cfg.client.project = "lab\$ld" }
+            'gradle' { $cfg.client.project = "lab\$(if ($ClientLoader) { $ClientLoader } else { $ld })" }
             'standalone' {
                 if ($ClientVersion) {
                     if (-not $ClientRoot) { throw '-ClientVersion 需要同时给 -ClientRoot <启动器根目录：含 versions\libraries\assets 的那一层>' }
