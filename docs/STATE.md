@@ -8,6 +8,12 @@
 > 部署手册见 [deployment-topology.md](deployment-topology.md)）。
 > 之后的变化都以「增补」段按时间排在下面；**哪一段是终态、哪一段被覆盖，看段落自述**。下次继续请从「新会话从这里读」一节读起。
 >
+> **2026-10-20 03:55 增补（natives 共享缓存）**：`devrun` 起独立客户端时，LWJGL natives 不再解到
+> `<EvidenceDir>\client-natives`，改为 `<仓库根>\.cache\natives\<MC 版本>-<架构>\` 一份共享缓存（`.cache/` 已进
+> `.gitignore`）；同一目录用文件锁串行化（第二个客户端会等，超时给出明确报错而不是让游戏神秘崩溃），启动前
+> 顺带清掉 JNA 每次启动新解的随机名 DLL（273 KB/次，不清就是慢性泄漏）。实测三次 smoke：取证目录
+> **17.7 MB → 36 KB**，共享缓存 **17.72 MB 稳定不涨**，`PASS=5 FAIL=0`。
+>
 > **2026-10-19 23:45 增补（通用能力 + 覆盖审计）**：`docs/pairedportals-coverage-audit.md` 给出「第三方 mod
 > 全自动化可测性」审计；据此补了四个**通用**能力 —— 客户端 `GET /chat/tail`（读客户端当前聊天/actionbar）、
 > 服务端 `/world/block|break|mine`、`/items`、`/block/sign`、`/block/command-block` 的 `dim` 参数（未知维度

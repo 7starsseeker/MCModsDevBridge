@@ -64,6 +64,8 @@
     ② 显式 -ProbeJar <路径>；③ 实例 JSON 里写 probeJar。后两条给「手上没有 lab 工程」的使用者。
     java.exe 按 -JavaExe → $env:JAVA_HOME → PATH 解析（scripts\lib\Env.ps1）；网络需要代理时由本脚本的
     JAVA_TOOL_OPTIONS 负责（-Proxy / 登记里的 proxy / 环境变量 / Windows 系统代理）。
+    natives（LWJGL 的 DLL）按「MC 版本 + 架构」缓存在 <仓库根>\.cache\natives\<版本>-<架构>\，同一份目录用文件锁
+    串行化；不再每轮往取证目录里解 17.7 MB，所以取证目录通常只有几十 KB 的日志。
 #>
 [CmdletBinding()]
 param(
@@ -285,6 +287,43 @@ function Invoke-Probe([string]$Base, [string]$Method, [string]$Path, $Body) {
     }
 }
 
+# natives（LWJGL 的 DLL）是同一版本同一批文件：放一个共享缓存，别每次跑都往取证目录里解一份。
+# 目录名带版本与架构，避免 26.3 x64 与别的组合互相踩。
+function Get-SharedNativesDir([string]$McVersion) {
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
+    $ver = if ($McVersion) { [string]$McVersion } else { 'unknown' }
+    $dir = Join-Path $Root ".cache\natives\$ver-$arch"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    return $dir
+}
+
+# 同一个 natives 目录同一时刻只让一个客户端用：游戏启动时会往里解 DLL，
+# 两个进程同时解会撞文件锁。拿不到就等，等不到就说清原因（而不是让游戏神秘崩溃）。
+function Lock-NativesDir([string]$Dir, [int]$TimeoutSec = 180) {
+    $lockPath = Join-Path $Dir '.locked'
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ($true) {
+        try {
+            $handle = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::OpenOrCreate,
+                [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            # JNA 每次启动都把 DLL 解成一个带随机后缀的新文件（273 KB/次）——不清就成了慢性泄漏。
+            # 此刻锁在手，没有客户端在用这份缓存，删旧的不会踩到正在运行的进程。
+            $jnaDir = Join-Path $Dir 'jna'
+            if (Test-Path -LiteralPath $jnaDir) {
+                # 全清：客户端每次启动都会解自己那份，留着只会一轮涨 273 KB。
+                Get-ChildItem -LiteralPath $jnaDir -File -ErrorAction SilentlyContinue |
+                    Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+            return $handle
+        } catch [System.IO.IOException] {
+            if ((Get-Date) -gt $deadline) {
+                throw "natives 缓存被另一个客户端占着：$Dir`n等了 $TimeoutSec 秒仍未释放。并发跑两个客户端请错开，或给其中一个实例换个 client.root。"
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
+
 function Wait-Probe([string]$Base, [string]$Label, [int]$TimeoutSec) {
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
@@ -467,6 +506,7 @@ function Compare-Expect($Body, $Expect) {
     return @{ Pass = $true; Reason = "ok ($checked check(s))" }
 }
 
+$nativesLock = $null
 try {
     # ---------------- 步骤 1：准备 ----------------
     $where = if ($HasServer) { "$Family → $ServerDir，游戏 $GamePort，探针 $ServerProbe" } else { "$Family → 仅客户端（无服务端），客户端探针 $ClientProbe" }
@@ -622,8 +662,11 @@ try {
             Write-Phase "3/6 起独立客户端（$($Cfg.clientRoot) 的 $($Cfg.clientVersion) → $ClientGameDir）"
             . (Join-Path $PSScriptRoot 'lib\Launch.ps1')
             $clientJava = if ($Cfg.clientJavaExe) { Resolve-JavaExe $Cfg.clientJavaExe } else { $JavaExe }
+            $nativesDir = Get-SharedNativesDir $Cfg.clientVersion
+            $nativesLock = Lock-NativesDir $nativesDir
+            Write-Host "  natives 缓存：$nativesDir（共享，不进取证目录）"
             $launch = Build-MinecraftLaunch -Root $Cfg.clientRoot -Version $Cfg.clientVersion `
-                -GameDir $ClientGameDir -NativesDir (Join-Path $EvidenceDir 'client-natives') `
+                -GameDir $ClientGameDir -NativesDir $nativesDir `
                 -Username $Cfg.clientUsername -JavaExe $clientJava -ExtraJvmArgs $probeArgs
             $clientPid = (Start-Process -FilePath $launch.JavaExe -ArgumentList $launch.Arguments `
                     -WorkingDirectory $ClientGameDir -WindowStyle Minimized `
@@ -931,6 +974,9 @@ finally {
     } else {
         Write-Host '  -KeepRunning：保留服务端与客户端'
     }
+
+    # 客户端停了才放开 natives 缓存；-KeepRunning 时保持占用（进程退出时句柄自然释放）。
+    if ($nativesLock -and -not $KeepRunning) { $nativesLock.Dispose(); $nativesLock = $null }
 
     if ($NextStep -and -not $PreflightOnly) {
         Write-Host ''

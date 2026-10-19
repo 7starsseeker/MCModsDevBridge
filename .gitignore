@@ -45,3 +45,6 @@ desktop.ini
 *.log
 *.pid
 hosts.bak.*
+
+# devrun 的共享缓存（natives 按 版本+架构 解一次，不再每轮复制进取证目录）
+.cache/
