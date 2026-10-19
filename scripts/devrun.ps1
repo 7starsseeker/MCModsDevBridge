@@ -48,7 +48,7 @@
 .NOTES
     前置：lab\<family> 已经 build 过（脚本会复制 lab\<family>\build\libs\mcdev_probe-*.jar），
     java.exe 按 -JavaExe → $env:JAVA_HOME → PATH 解析（scripts\lib\Env.ps1）；网络需要代理时由本脚本的
-    JAVA_TOOL_OPTIONS 负责（-Proxy / 环境变量 / Windows 系统代理）。
+    JAVA_TOOL_OPTIONS 负责（-Proxy / 登记里的 proxy / 环境变量 / Windows 系统代理）。
 #>
 [CmdletBinding()]
 param(
@@ -59,7 +59,7 @@ param(
     # 套件不带任何客户端/服务器端，实例由使用者自备并登记；-Family 只是「按加载器找同名登记」的简写。
     [string]$Instance,
     # 显式覆盖（套件用户手上没有本仓 lab 工程）：java.exe 完整路径、HTTP 代理。
-    # 默认从 JAVA_HOME/PATH、HTTPS_PROXY/系统代理解析，见 scripts\lib\Env.ps1。
+    # 默认从 JAVA_HOME/PATH 找 java；代理按 -Proxy → 登记 proxy → HTTPS_PROXY/系统代理解析（lib\Env.ps1）。
     [string]$JavaExe,
     [string]$Proxy,
     [switch]$NoProxy,
@@ -436,7 +436,7 @@ try {
         $JavaHome = Resolve-JavaHome $JavaExe
         $env:JAVA_HOME = $JavaHome
         $env:JAVA_TOOL_OPTIONS = (@(
-                (Get-JavaProxyOptions (Resolve-ProxyUrl -Explicit $Proxy -NoProxy:$NoProxy))
+                (Get-JavaProxyOptions (Resolve-ProxyUrl -Explicit $Proxy -Stored $Cfg.proxy -NoProxy:($NoProxy -or $Cfg.noProxy)))
                 "-Dmcdev.probe.server.url=http://127.0.0.1:$ServerProbe"
                 "-Dmcdev.probe.client.port=$ClientProbe"
             ) | Where-Object { $_ }) -join ' '

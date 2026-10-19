@@ -86,8 +86,13 @@
 结论：**只有 NeoForge 的 maven 在这条线路上需要代理**；其余直连可用。探测 7 个端点全程 ≈ 11 s，
 失败也会给可执行指引（加 `-Proxy` 或改离线）。注意「404 = 主机可达」——探 HEAD 时 404 属正常。
 
-代理解析顺序（`provision-instance.ps1`）：`-Proxy` → `HTTPS_PROXY`/`HTTP_PROXY` 环境变量 →
-Windows 系统代理（`HKCU\...\Internet Settings`，仅 `ProxyEnable=1` 时）→ 直连。`-NoProxy` 强制直连。
+代理解析顺序（`scripts/lib/Env.ps1`）：`-Proxy` → **实例登记里的 `proxy`**（部署时问过用户）→
+`HTTPS_PROXY`/`HTTP_PROXY` 环境变量 → Windows 系统代理（`HKCU\...\Internet Settings`，仅 `ProxyEnable=1` 时）
+→ 直连。`-NoProxy` 或登记里的 `noProxy: true` 强制直连。
+
+**部署时先问一次代理，不要猜。** `scripts/setup-wizard.ps1` 第 4 步会问「直连 / 走代理（填地址）/ 用系统代理」，
+答案写进 `instances\<名字>.json` 的 `proxy` / `noProxy`；之后 `devrun`、打包直接复用，不用再传 `-Proxy`。
+理由：能从 GitHub 拿到套件的人通常本来就有代理，但端口因机器而异 —— 问一次比写死或靠猜都可靠。
 
 ### 3.1 代理要注入到四个地方（缺一个就卡在那一环）
 

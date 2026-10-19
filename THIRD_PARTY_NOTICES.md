@@ -13,7 +13,7 @@
 | 上游 | https://github.com/yan-mc/minecraft-mod-dev |
 | 版权 | Copyright (c) 2026 yan-mc |
 | 原许可 | MIT |
-| 本仓库中的派生部分 | `plugin/minecraft-mod-dev/`（DSH 插件层）、`lab/mcdev-probe/` 的原创 Java |
+| 本仓库中的派生部分 | `lab/shared/` 与 `lab/{fabric,forge,neoforge}/` 的探针 Java（源自上游 `lab/mcdev-probe/`）；`tools/dsh-plugin/`（源自上游 `plugin/minecraft-mod-dev/`） |
 
 MIT 的授权条款包含 **sublicense**，因此本仓库可以整体改用 Apache-2.0。
 MIT 的唯一义务是保留版权声明与许可全文 —— 已在 [NOTICE](NOTICE) 中完整转载，分发时须一并携带。

@@ -20,6 +20,13 @@
 .PARAMETER Client
     客户端形态：gradle（用本仓 lab 工程的 runClient）/ standalone（真实客户端，需 -ClientExe）/ none。
 
+.PARAMETER Proxy
+    这个实例访问 GitHub / Maven 用的代理地址（如 http://127.0.0.1:7890），写进登记的 `proxy` 字段。
+    之后 devrun 不需要再传 -Proxy。部署向导（setup-wizard.ps1）会主动问一次同样的问题。
+
+.PARAMETER NoProxy
+    强制直连，写进登记的 `noProxy: true` —— 即使系统代理开着也不走。
+
 .EXAMPLE
     pwsh -NoProfile -File scripts\register-instance.ps1 -Name fabric -Dir '<MC_ROOT>\Server'
 
@@ -37,6 +44,8 @@ param(
     [int]$GamePort = 0,
     [int]$ProbePort = 0,
     [string]$JavaExe = '',
+    [string]$Proxy,
+    [switch]$NoProxy,
 
     [ValidateSet('gradle', 'standalone', 'none')]
     [string]$Client = 'gradle',
@@ -52,6 +61,7 @@ $root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'lib\Env.ps1')
 $JavaExe = Resolve-JavaExe $JavaExe
 $utf8 = New-Object System.Text.UTF8Encoding($false)
+if ($Proxy -and $NoProxy) { throw '-Proxy 与 -NoProxy 不能同时给（要么走代理，要么强制直连）。' }
 
 if (-not (Test-Path $Dir)) { throw "服务端目录不存在：$Dir" }
 $Dir = (Resolve-Path $Dir).Path
@@ -155,6 +165,9 @@ $cfg = [ordered]@{
     client   = $clientBlock
     notes    = "由 register-instance.ps1 于 $(Get-Date -Format 'yyyy-MM-dd HH:mm') 登记。"
 }
+# 网络：-Proxy 显式给地址；-NoProxy 强制直连。都不给就留空 —— devrun 时按环境变量/系统代理解析。
+if ($Proxy) { $cfg.proxy = $Proxy }
+if ($NoProxy) { $cfg.noProxy = $true }
 
 $cfg | ConvertTo-Json -Depth 6 | ForEach-Object { $_ -replace "`r`n", "`n" } |
     Set-Content -Path $target -Encoding utf8 -NoNewline

@@ -11,6 +11,11 @@
     3) 用现成实例还是新准备：现成的只登记路径与端口（自动探测服务端目录、`server.properties` 端口）；
        新准备的建一个空骨架（`mods/`、`eula.txt`、`server.properties`、README），
        服务端程序本身要用户自己放进去 —— 本脚本不下载任何东西。
+    4) 网络怎么走：直连 / 走代理 / 用系统代理 —— **部署时问一次，写进登记**。
+       能从这里拿到套件的人通常本来就有代理，但代理端口因机器而异，所以不猜、不写死。
+
+  第 4 步写下的值会被 `scripts/lib/Env.ps1` 优先使用：显式 `-Proxy` → 登记里的 `proxy` →
+  `HTTPS_PROXY`/`HTTP_PROXY` → Windows 系统代理。登记里写了 `noProxy: true` 则强制直连。
 
   三种加载器都不沾的环境：本套件帮不上（探针是三个不同 jar，各自只认自己的加载器）。
   作为补偿，实例登记支持 `start.exe`（任意启动器/开服器/脚本）：只要那个启动器最终起的是**被支持的
@@ -41,6 +46,8 @@ param(
     [string[]]$StartArgs = @(),
     [string]$StartExe,
     [string]$ProbeJar,
+    [string]$Proxy,
+    [switch]$NoProxy,
     [switch]$NonInteractive,
     [switch]$Force
 )
@@ -129,12 +136,30 @@ if (-not $NonInteractive) {
 
     if ($Mode -eq 'existing') { $Dir = AskPath '现成实例的目录（服务端根目录：含 eula.txt / server.properties 的那一层）' }
     else { $Dir = AskPath '新建到哪里（会给一个空骨架）' }
+
+    # ---- 4. 网络（代理）----
+    $detected = Resolve-ProxyUrl
+    $hint = if ($detected) { "（现在读到的是 $detected）" } else { '（现在没读到系统代理/环境变量）' }
+    $i = Ask "第 4 步：这台机器访问 GitHub / Maven 要不要走代理？$hint" @(
+        '直连，不走代理（登记里写 noProxy）',
+        '走代理，我来填地址',
+        '用系统代理 / HTTPS_PROXY（把读到的值写进登记）'
+    ) 3
+    switch ($i) {
+        1 { $NoProxy = $true }
+        2 { $Proxy = AskPath '代理地址（如 http://127.0.0.1:7890）' }
+        3 {
+            if ($detected) { $Proxy = $detected; Write-Host "  将写入登记：$Proxy" }
+            else { Write-Warning '没读到系统代理/环境变量 ⇒ 按直连登记（之后可改 instances\<名字>.json 的 proxy 字段）。'; $NoProxy = $true }
+        }
+    }
 }
 
 if (-not $Loader) { throw '缺少 -Loader（fabric|forge|neoforge）' }
 if (-not $Side) { throw '缺少 -Side（client|server|both）' }
 if (-not $Mode) { throw '缺少 -Mode（existing|provision）' }
 if (-not $Dir) { throw '缺少 -Dir' }
+if ($Proxy -and $NoProxy) { throw '-Proxy 与 -NoProxy 不能同时给（要么走代理，要么强制直连）。' }
 
 if (-not (Test-Path $InstanceDir)) { New-Item -ItemType Directory -Force -Path $InstanceDir | Out-Null }
 
@@ -220,6 +245,8 @@ foreach ($ld in $loaders) {
         }
     }
     if ($ProbeJar) { $cfg.probeJar = (Resolve-Path $ProbeJar).Path }
+    if ($Proxy) { $cfg.proxy = $Proxy }
+    if ($NoProxy) { $cfg.noProxy = $true }
     if ($Side -ne 'server') {
         # 新环境里没有 lab 工程（套件不携带任何 MC 客户端），客户端只能由用户自己的启动器起：
         # 那就是 client.mode=external —— devrun 不启动任何东西，只等 39002 上的探针上线。
@@ -248,3 +275,5 @@ foreach ($n in $written) {
 Write-Host ''
 Write-Host '提醒：① 同一时刻只能有一个客户端（探针端口都是 39002）；② 客户端探针要装在客户端 mods/ 里；'
 Write-Host '      ③ forge/neoforge 的客户端实例需要本来就能启动（缺资源会先下载）；④ 端口被占时 devrun 会先清掉占用者。'
+$proxyNote = if ($NoProxy) { '直连（已写 noProxy）' } elseif ($Proxy) { $Proxy } else { '未指定 ⇒ devrun 时按 HTTPS_PROXY / 系统代理解析' }
+Write-Host "      ⑤ 网络：$proxyNote（要改就编辑 instances\<名字>.json 的 proxy / noProxy 字段）"
