@@ -796,6 +796,10 @@ try {
     # （真鼠标 + 真截图），不归本套件管；这里只把「要不要用它」问出口。
     # kind / affectsVerdict 两个字段是给读 results.json 的脚本看的：
     # 这一段是建议，判绿还是判红只由 steps[] 决定，它不参与、也不改变结论。
+    # 打开「已有」单人世界时，探针按 backup 的默认值 ask 什么都不点：要不要备份是使用者的选择。
+    # 但「什么都没点」这件事必须说出来并给出处理办法，否则使用者只会看到卡住，不知道为什么。
+    $backupAskSteps = @($Results | Where-Object { $_.body -match '"backupAction"\s*:\s*"ask"' } | ForEach-Object { [string]$_.id })
+
     $cuState = if ($Cfg.computerUse) { [string]$Cfg.computerUse } else { (Get-ComputerUseState).state }
     $NextStep = [ordered]@{
         kind          = 'hint'
@@ -806,6 +810,18 @@ try {
         options       = @('直接手测', '用 computer use 再跑一轮（真实鼠标 + 真截图）')
         hint          = '截图与真实桌面操作由 DSH 的 computer use 提供，本套件不实现截图。'
         onFailure     = '有失败项时：-KeepRunning 重跑留现场，再用 computer use 进现场看状态/截图找可疑点（同样是建议）'
+        backup        = if ($backupAskSteps.Count -gt 0) {
+            [ordered]@{
+                kind           = 'question'
+                affectsVerdict = $false
+                steps          = $backupAskSteps
+                question       = '有一步打开的是「已有」单人世界，探针按默认 backup=ask 没有替你点任何按钮。现在怎么办？（由你决定）'
+                options        = @('在场景里写 &backup=skip —— 跳过备份直接进（自动化常用）',
+                                   '在场景里写 &backup=do —— 真备份一次再进',
+                                   '你自己手动进去点 —— 那这一步就别自动跑')
+                hint           = 'MC 26.3 打开已有世界会先弹 BackupConfirmScreen（「备份再进 / 跳过直接进」）；新建世界不弹。'
+            }
+        } else { $null }
     }
 
     $resultsPath = Join-Path $EvidenceDir 'results.json'
@@ -853,6 +869,13 @@ try {
         $lines.Add('截图与真实桌面操作由 DSH 的 computer use 提供，本套件不做截图。')
     } else {
         $lines.Add('第一轮自动测试跑完了，接下来直接手测。本机没启用 DSH 的 computer use；需要真截图就装那个官方可选插件。')
+    }
+    if ($NextStep.backup) {
+        $lines.Add('')
+        $lines.Add('**需要你定一下**：' + $NextStep.backup.question + '（涉及步骤：' + ($NextStep.backup.steps -join '、') + '）')
+        foreach ($opt in $NextStep.backup.options) { $lines.Add("- $opt") }
+        $lines.Add('')
+        $lines.Add('背景：' + $NextStep.backup.hint)
     }
     $lines.Add('')
     $lines.Add('| 用例 | 目标 | 请求 | 状态 | 结论 | 说明 | 理由 |')
@@ -914,6 +937,13 @@ finally {
             Write-Host '  另：这次有失败项时，-KeepRunning 重跑能留住现场，再用 computer use 进去截图、看可疑点、读现场状态（同样是建议）。'
         } else {
             Write-Host '  可选下一步：直接手测。本机没启用 DSH 的 computer use；要截图就装那个官方可选插件，然后重跑一次。'
+        }
+        if ($NextStep.backup) {
+            Write-Host ''
+            Write-Host ('  需要你定一下：' + $NextStep.backup.question)
+            Write-Host ('    涉及步骤：' + ($NextStep.backup.steps -join '、'))
+            foreach ($opt in $NextStep.backup.options) { Write-Host ('    - ' + $opt) }
+            Write-Host ('    背景：' + $NextStep.backup.hint)
         }
     }
 }

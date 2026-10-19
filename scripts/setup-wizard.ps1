@@ -13,6 +13,10 @@
        服务端程序本身要用户自己放进去 —— 本脚本不下载任何东西。
     4) 网络怎么走：直连 / 走代理 / 用系统代理 —— **部署时问一次，写进登记**。
        能从这里拿到套件的人通常本来就有代理，但代理端口因机器而异，所以不猜、不写死。
+    5) 单人世界的备份确认：MC 26.3 打开**已有**存档会先弹 `BackupConfirmScreen`（「备份再进 / 跳过直接进」）。
+       探针默认 `backup=ask` —— **什么都不点**，要不要备份由使用者决定；要自动化就在场景的
+       `/world/singleplayer` 后面写 `&backup=skip`（跳过备份直接进）或 `&backup=do`（真备份一次）。
+       跑到 `ask` 时 devrun 会把这个问题问出来（并给三个选项），不会替你选。
 
   第 4 步写下的值会被 `scripts/lib/Env.ps1` 优先使用：显式 `-Proxy` → 登记里的 `proxy` →
   `HTTPS_PROXY`/`HTTP_PROXY` → Windows 系统代理。登记里写了 `noProxy: true` 则强制直连。
@@ -343,3 +347,5 @@ Write-Host '提醒：① 同一时刻只能有一个客户端（探针端口都�
 Write-Host '      ③ forge/neoforge 的客户端实例需要本来就能启动（缺资源会先下载）；④ 端口被占时 devrun 会先清掉占用者。'
 $proxyNote = if ($NoProxy) { '直连（已写 noProxy）' } elseif ($Proxy) { $Proxy } else { '未指定 ⇒ devrun 时按 HTTPS_PROXY / 系统代理解析' }
 Write-Host "      ⑤ 网络：$proxyNote（要改就编辑 instances\<名字>.json 的 proxy / noProxy 字段）"
+Write-Host '      ⑥ 单人世界：打开「已有」存档时 MC 26.3 会先弹「备份再进 / 跳过直接进」。套件默认 backup=ask（什么都不点），'
+Write-Host '         要不要备份由你决定；要自动化就在场景里写 &backup=skip（跳过备份直接进）或 &backup=do（真备份一次）。'

@@ -630,7 +630,10 @@ platform/<loader>/
   要不要备份是使用者的选择，套件不替他决定；`skip` 点「跳过直接进」，`do` 点「备份再进」。
   没有点任何东西时 `backupAction` 是 `ask`，点了则是 `skipped` / `backed-up`（最长等 15 s，等不到返回 `still-blocked`）。
   实现上 `SKIP_AND_JOIN` 是 **private** 常量（javap 实测），所以「跳过」按排除法找 —— `BackupConfirmScreen` 上
-  除 `BACKUP_AND_JOIN` 之外的那个 `Button` 就是它；点击走 `mouseMoved` + `onClick`，与 `/ui/click` 同一条路径。- 已在世界里再调创建 → `409`；`mode` / `gamemode` / `seed` 非法 → `400`。
+  除 `BACKUP_AND_JOIN` 之外的那个 `Button` 就是它；点击走 `mouseMoved` + `onClick`，与 `/ui/click` 同一条路径。
+- 探针把「什么都没点」如实回报（`backupAction=ask`），**套件不替使用者选**：`devrun` 扫到这一步时会在
+  「提示（不参与判定）」段里把问题说出来并给三个选项，`results.json` 的 `nextStep.backup` 带同一份问答
+  （`kind: "question"`、`affectsVerdict: false`）；部署向导的完成横幅也会先把这条规则讲一遍。- 已在世界里再调创建 → `409`；`mode` / `gamemode` / `seed` 非法 → `400`。
 
 `scenarios/singleplayer.json`（5 步）就是这条链路的自检：create(flat, reuse) → 等 `inWorld` → 断言 `dimension`/`linked` → leave → 等 `inWorld=false`。
 实测：`devrun -Instance sp-client -Scenario scenarios\singleplayer.json`（`side=client`，无服务端进程）**5/5 PASS，exit 0**（取证 `tmp/devrun-sp`）。

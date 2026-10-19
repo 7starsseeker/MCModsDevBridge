@@ -132,6 +132,10 @@
 >   （默认 `ask` 什么都不点：「要不要备份」是使用者的选择，套件不替他决定），回包多 `backup` / `backupAction`。
 >   `SKIP_AND_JOIN` 是 private 常量（javap 实测），所以「跳过」按排除法找那个 `Button`。
 >   两个自检场景（`scenarios/singleplayer.json`、`scenarios/fixtures/fixture-client-only.json`）显式写 `&backup=skip`。
+>   部署向导的完成横幅会先讲一遍这条规则；跑到 `backup=ask`（默认，什么都没点）时 `devrun` 会把问题问出来
+>   并给三个选项（写 `skip` / 写 `do` / 你自己手点），`results.json` 的 `nextStep.backup` 带同一份问答
+>   （`kind: "question"`、`affectsVerdict: false`）—— 实测：`tmp\devrun-backup-ask`（ask 那轮 2/2 PASS 且提问出现）、
+>   `tmp\devrun-sp-bk-regress`（`skip` 那轮 5/5 PASS 且 `nextStep.backup` 为 null）。
 > - 实测：5 个 fixture 工程新路径下 `gradlew build` 全 exit 0（6,844 / 3,060 / 3,112 / 7,017 / 6,821 B）；
 >   三家探针重建 exit 0（fabric **130,898** / forge **127,061** / neoforge **130,646** B）；
 >   `devrun-matrix -Cases tmp\cases-relocated.json` → `tmp\matrix-relocated2` **2/2 全部符合预期 exit 0**

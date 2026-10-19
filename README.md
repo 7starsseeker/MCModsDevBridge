@@ -132,6 +132,9 @@ pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端
 - `reuse=true` 时同名世界存在就**打开**它（同一份数据反复用，不在 `saves` 里越堆越多）；否则新建，
   撞名自动加 `-2` / `-3`，返回 `renamed: true`。
 - 创建是异步的：用客户端 `/status` 的 `inWorld` 轮询等它就绪（`scenarios/singleplayer.json` 就是范例）。
+- 跑到 `backup=ask` 时 `devrun` 会把这个问题问出来（三个选项：写 `skip` / 写 `do` / 你自己手点），
+  `results.json` 的 `nextStep.backup` 也带同一份问答 —— **套件不替你选**。部署向导（`setup-wizard.ps1`）
+  的完成横幅会把这条规则先说一遍。
 - 打开**已有**单人世界时，26.3 会先弹 `BackupConfirmScreen`（「备份再进 / 跳过直接进」）。
   `backup=ask`（默认）什么都不点 —— 要不要备份由你决定；`skip` 跳过备份直接进（自动化场景用这个），
   `do` 真备份一次。实际动作看返回的 `backupAction`（`ask` / `no-screen` / `skipped` / `backed-up` / `still-blocked`）。- 单人世界里的内置服务端也会加载 `environment: "*"` 的 mod ⇒ 它证明的是「装在同一份客户端里时生效」，
