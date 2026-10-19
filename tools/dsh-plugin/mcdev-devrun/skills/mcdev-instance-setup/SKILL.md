@@ -155,8 +155,8 @@ Windows 系统代理（`HKCU\…\Internet Settings`，仅 `ProxyEnable=1` 时）
 
 ## 7. 现场踩出来的坑
 
-- **白名单必须写离线 UUID**：`online-mode=false` 时是 `<OFFLINE_UUID>` 这类
-  由用户名算出的离线 UUID，填 Mojang UUID 会一直「You are not white-listed」。
+- **白名单必须写离线 UUID**：`online-mode=false` 时服务端要的是由用户名算出的离线 UUID
+  （`OfflinePlayer:<名字>` 的 MD5 加 v3 位修正），填 Mojang UUID 会一直「You are not white-listed」。
 - **Forge/NeoForge 客户端资源在 `%APPDATA%\.minecraft\assets`**（Mojang 布局，启动器从 `APPDATA` 推导）。
   离线部署可以从任意现成 `.minecraft/assets` 复制——实测 5,147 个对象，**缺一个就会在启动时卡住**。
 - **首次启动的一次性界面**（无障碍向导 / 图形警告）由 `devrun` 在连接前关掉：不写 `options.txt`、不按坐标盲点。

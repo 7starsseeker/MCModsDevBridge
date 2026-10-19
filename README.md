@@ -88,9 +88,9 @@ pwsh -NoProfile -File scripts\install-dsh-plugin.ps1 -Mode install
 
 ```powershell
 # 装探针到客户端游戏目录（mods/、config/mcdev-probe.properties、安装记录 manifest）
-pwsh -NoProfile -File scripts\install-probe.ps1 -Side client -Loader fabric -Target 'T:\你的客户端目录'
+pwsh -NoProfile -File scripts\install-probe.ps1 -Side client -Loader fabric -Target '<TARGET_DIR>\客户端目录'
 # 卸载（只删 manifest 登记过、且 sha256 没变的文件；.minecraft 里别的东西一律不碰）
-pwsh -NoProfile -File scripts\remove-probe.ps1 -Target 'T:\你的客户端目录'
+pwsh -NoProfile -File scripts\remove-probe.ps1 -Target '<TARGET_DIR>\客户端目录'
 
 # 登记成实例：服务端 + 独立客户端
 pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端目录>' -Side both `
@@ -144,7 +144,7 @@ pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端
 # 纯客户端实例（没有服务端可起，-Dir 可省）
 pwsh -NoProfile -File scripts\register-instance.ps1 -Name sp -Side client -Loader fabric `
      -Client standalone -ClientRoot '<HMCL_HOME>' -ClientVersion '26.3-Fabric' `
-     -ClientGameDir 'T:\你的客户端目录'
+     -ClientGameDir '<TARGET_DIR>\客户端目录'
 pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\singleplayer.json
 ```
 

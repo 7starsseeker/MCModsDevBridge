@@ -555,7 +555,7 @@ Gradle（同上或 `systemProp.*`）、外部客户端实例（启动器 JVM 参
 - **`/ui/*` 在 26.1/26.2 是否也一样** —— 26.3 的 `Gui.screen()` 是新位置，26.1/26.2 未核对；
   若旧版放在 `Minecraft` 上，`capabilities` 要按版本派生，而不是按端派生。
 - ~~**fabric-api 依赖留不留**~~ —— **已定：留（用户 2026-10-19）**。理由：Fabric 生态里 fabric-api 事实上是标配，依赖它比自建 loader 原生命令注册便宜得多。执行上必须做对一件事：`fabric.mod.json` 里写 `depends: { "fabric-api": "*" }`，让它缺了**启动即报 `HARD_DEP_NO_CANDIDATE`**，而不是运行到一半 `ClassNotFoundException`（P1 已实测过这个报错形态）。注：fabric-api **不在** loader 内，是独立 mod，所以这条依赖必须显式声明。
-- ~~**Forge / NeoForge 的客户端入口**~~ —— **已落地（2026-10-20 20:45，编译级）**：`@Mod` 构造器里判 `FMLEnvironment.dist == Dist.CLIENT`，NeoForge 用 `ClientStartedEvent`、Forge 用首个 `ClientTickEvent.Post`（EventBus 7 没有 `@Mod.EventBusSubscriber`）。**实测已补**（2026-10-20）：两家的**独立客户端**（`O:\...\versions\26.3-Forge-test` / `26.3-NeoForge-test` 形态）都真跑过，客户端那一半 5/5、缺一侧 4/4 全绿（`tmp\detect-fix-*`）。**仍未做的**只有 gradle `runClient` 那条路（首次可能触发资源下载）。
+- ~~**Forge / NeoForge 的客户端入口**~~ —— **已落地（2026-10-20 20:45，编译级）**：`@Mod` 构造器里判 `FMLEnvironment.dist == Dist.CLIENT`，NeoForge 用 `ClientStartedEvent`、Forge 用首个 `ClientTickEvent.Post`（EventBus 7 没有 `@Mod.EventBusSubscriber`）。**实测已补**（2026-10-20）：两家的**独立客户端**（`<HMCL_HOME>\versions\26.3-Forge-test` / `26.3-NeoForge-test` 形态）都真跑过，客户端那一半 5/5、缺一侧 4/4 全绿（`tmp\detect-fix-*`）。**仍未做的**只有 gradle `runClient` 那条路（首次可能触发资源下载）。
 - ~~**`/action/move` 的远端瞬移**~~ —— **已解决（2026-10-19 19:45，用户 m01211 批准）**：新增
   `mode:"server-teleport"`，客户端探针调服务端探针 `/command tp` 代劳，再用 `/player/state` 读回权威坐标。
   56 格外实测 `applied:true, horizontalError:0.0`（708ms）。配置面是 `-Dmcdev.probe.server.url`
