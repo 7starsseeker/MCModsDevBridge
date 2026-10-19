@@ -1,0 +1,96 @@
+{
+  "name": "capabilities",
+  "steps": [
+    {
+      "id": "dim-forceload",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "execute in minecraft:the_nether run forceload add 8 8" },
+      "expect": { "status": 200 }
+    },
+    {
+      "id": "dim-setblock",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "execute in minecraft:the_nether run setblock 8 100 8 minecraft:stone" },
+      "expect": { "status": 200 }
+    },
+    {
+      "id": "dim-read",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?dim=minecraft:the_nether&x=8&y=100&z=8",
+      "expect": { "status": 200, "contains": { "data.block": "stone" } }
+    },
+    {
+      "id": "dim-break",
+      "target": "server",
+      "method": "POST",
+      "path": "/world/break?dim=minecraft:the_nether&x=8&y=100&z=8",
+      "expect": { "status": 200, "json": { "data.removed": true } }
+    },
+    {
+      "id": "dim-read-after-break",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?dim=minecraft:the_nether&x=8&y=100&z=8",
+      "expect": { "status": 200, "contains": { "data.block": "air" } }
+    },
+    {
+      "id": "dim-unknown",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?dim=minecraft:definitely_not_a_dimension&x=8&y=100&z=8",
+      "expect": { "status": 400 }
+    },
+    {
+      "id": "say",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "say probe-chat-line" },
+      "expect": { "status": 200 }
+    },
+    {
+      "id": "client-chat",
+      "target": "client",
+      "method": "GET",
+      "path": "/chat/tail?n=40",
+      "retry": { "times": 20, "intervalMs": 250 },
+      "expect": { "status": 200, "contains": { "data.text": "probe-chat-line" } }
+    },
+    {
+      "id": "actionbar",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "title {{player}} actionbar {\"text\":\"probe-actionbar-ok\"}" },
+      "expect": { "status": 200 }
+    },
+    {
+      "id": "client-actionbar",
+      "target": "client",
+      "method": "GET",
+      "path": "/chat/tail?n=5",
+      "retry": { "times": 20, "intervalMs": 250 },
+      "expect": { "status": 200, "contains": { "data.actionbar": "probe-actionbar-ok" } }
+    },
+    {
+      "id": "server-log",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=80",
+      "expect": { "status": 200, "text": ["probe-chat-line"] }
+    },
+    {
+      "id": "dim-forceload-clear",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": { "cmd": "execute in minecraft:the_nether run forceload remove 8 8" },
+      "expect": { "status": 200 }
+    }
+  ]
+}

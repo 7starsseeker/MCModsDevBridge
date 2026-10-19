@@ -10,9 +10,9 @@
 
 ## 它做什么
 
-- **服务端探针**（`lab/shared/.../ProbeServer.java`）：状态、命令、方块 / NBT、掉落、日志、tick 控制、动作后端。
-- **客户端探针**（`lab/shared/.../ClientProbeServer.java` + `action/ClientActionBackend.java`）：UI 控件树、槽位、脚本化输入（点击 / 右键 / 按键）、截图、聊天命令。
-- **端到端编排**（`scripts/devrun.ps1`）：读实例登记 → 起服务端 → 等就绪 → 起客户端 → 连服并 op → 逐步执行场景 → 收集证据 → 收尾；失败退出码非 0。
+- **服务端探针**（`lab/shared/.../ProbeServer.java`）：状态、命令、方块 / NBT、掉落、日志、tick 控制、动作后端；方块读写可指定维度（`dim` 参数，未知维度回 400）。
+- **客户端探针**（`lab/shared/.../ClientProbeServer.java` + `action/ClientActionBackend.java`）：UI 控件树、槽位、脚本化输入（点击 / 右键 / 按键）、截图、聊天命令、`/chat/tail`（读客户端**当前**看到的聊天与 actionbar，用来断言「玩家屏幕上真的出现了」）。
+- **端到端编排**（`scripts/devrun.ps1`）：读实例登记 → 起服务端 → 等就绪 → 起客户端 → 连服并 op → 逐步执行场景 → 收集证据 → 收尾；失败退出码非 0。场景步骤支持 `retry`（等状态出现），断言支持等值 / 字段包含子串 / 响应体包含子串。
 - **DSH 插件**（`tools/dsh-plugin/mcdev-devrun/`）：把同一套编排包成 `mcdev_devrun` / `mcdev_scenarios` 两个工具，供 agent 直接调用。
 
 ## 本仓库不含什么
@@ -82,7 +82,7 @@ pwsh -NoProfile -File scripts\install-dsh-plugin.ps1 -Mode install
 | `lab/shared/` | 三家共用的探针实现（服务端 / 客户端 / 动作后端 / 命令） |
 | `lab/fabric/` `lab/forge/` `lab/neoforge/` | 三家加载器的构建骨架与入口类 |
 | `scripts/` | `devrun` 编排、实例登记、部署向导、打包、DSH 插件安装 |
-| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions`） |
+| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities`；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
 | `tools/dsh-plugin/` | DSH 插件（`mcdev_devrun` / `mcdev_scenarios`） |
 | `docs/` | 可行性评估、逐阶段移植记录、部署拓扑、状态总览 |
 

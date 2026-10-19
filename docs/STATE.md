@@ -6,6 +6,13 @@
 > 走 `-Proxy http://127.0.0.1:<PROXY_PORT>` 变 7/7 全通**）；套件加了「不含任何 MC 运行时」的**打包断言**；
 > 编排脚本支持实例登记 `instances/<name>.json`（启动器无关）与纯服务端场景 `scenarios/server-only.json`。
 > 部署手册见 [deployment-topology.md](deployment-topology.md)）。下次继续请从「新会话从这里读」一节读起。
+>
+> **2026-10-19 23:45 增补（通用能力 + 覆盖审计）**：`docs/pairedportals-coverage-audit.md` 给出「第三方 mod
+> 全自动化可测性」审计；据此补了四个**通用**能力 —— 客户端 `GET /chat/tail`（读客户端当前聊天/actionbar）、
+> 服务端 `/world/block|break|mine`、`/items`、`/block/sign`、`/block/command-block` 的 `dim` 参数（未知维度
+> 由静默回落改为 400）、场景 DSL 步骤级 `retry`、断言 `expect.contains`/`expect.text`。
+> 自检场景 `scenarios/capabilities.json` 在 **Fabric / Forge / NeoForge 三家各实测 12/12 PASS**。G2（服务端
+> `/player/state` 加 `dimension`）按需求方口径**不做**。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
 
@@ -40,7 +47,9 @@ pwsh -NoProfile -File scripts\setup-wizard.ps1       # 交互式：挑加载器/
 1. **独立客户端实例形态**（唯一挡在「可分发给别人」前面的东西）：HMCL profile / 套件自带手写启动壳 /
    官方启动器 profile —— 三选一，我还没替用户定。定完把 `client.mode=external` 这条路真机跑一次。
 2. **PairedPortals 门框贴牌用例**（用户要求「记下来之后要测」，已写在下方待测节）：
-   门框内贴牌 + 写字，唯一没验证过的环节是「手放牌的落点」。
+   门框内贴牌 + 写字，唯一没验证过的环节是「手放牌的落点」。审计与缺口见
+   [pairedportals-coverage-audit.md](pairedportals-coverage-audit.md)（G1/G3/G4/G6 已补齐，可直接写
+   `scenarios/pairedportals-core.json`）。
 3. **P5 发布渠道**：GitHub release（单套件 zip）还是私有分发；版本策略（现在只有 `1.0.0`）。
 4. **可选**：FakePlayer（无客户端 CI 才需要，当前已证明不需要）、58 包覆盖 24/58 要不要再扩。
 
@@ -64,6 +73,7 @@ pwsh -NoProfile -File scripts\setup-wizard.ps1       # 交互式：挑加载器/
   `/status` 返回 `side=server` + 正确 `loader`，三份骨架 `clean build` **零警告**。
 - 客户端探针在 **Fabric** 上 17 条路由全通（**15×200 + 1×400 缺参 + 1×409 无目标**，无 501），
   `/connect` 能把客户端送进本地专用服（服务端 `players` 0→1）。
+  P6 又加了 `/chat/tail`（第 18 条，读客户端当前聊天/actionbar），实测见 `scenarios/capabilities.json`。
 - **`/ui/*` 五条在 26.3 上全部可用** —— `Screen` 从 `Minecraft` 搬到了 `net.minecraft.client.gui.Gui`
   （`mc.gui.screen()` / `setScreen(...)` / `overlay()`），实测能读控件树、能点按钮跳转界面。
 

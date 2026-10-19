@@ -227,6 +227,50 @@ public final class ProbeServer {
         }
     }
 
+    /**
+     * 按 {@code dim} 解析目标维度；**未知维度直接 400，不回落到主世界**。
+     *
+     * <p>以前只有 `/world/block` 认这个参数，而且找不到维度就默默用主世界。结果「读下界的门」这种
+     * 断言会拿到主世界同坐标的方块 —— 恰好也是空气时看起来「对」，是石头时看起来「错」，两种情况
+     * 都看不出错在维度参数上。维度名写错属于调用方的错，必须响。</p>
+     */
+    private static ServerLevel requireLevel(String dim) {
+        ResourceKey<Level> key;
+        try {
+            key = ResourceKey.create(Registries.DIMENSION, Identifier.parse(dim));
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("invalid dimension id '" + dim + "': " + e.getMessage());
+        }
+        ServerLevel level = mc.getLevel(key);
+        if (level == null) {
+            StringBuilder loaded = new StringBuilder();
+            for (ServerLevel each : mc.getAllLevels()) {
+                if (loaded.length() > 0) {
+                    loaded.append(", ");
+                }
+                loaded.append(each.dimension().identifier());
+            }
+            throw new IllegalArgumentException("unknown dimension '" + dim + "' (loaded: " + loaded + ")");
+        }
+        return level;
+    }
+
+    /**
+     * 把 handler 里的异常翻成 HTTP：{@link IllegalArgumentException} → 400，其余 → 500。
+     *
+     * <p>{@code future.get()} 会把 lambda 里的异常包成 {@link java.util.concurrent.ExecutionException}，
+     * 不解包就会把「维度名写错」报成 500 —— 调用方分不清是自己参数错还是探针坏了。</p>
+     */
+    private static void fail(HttpExchange ex, Exception e, String what) throws IOException {
+        Throwable cause = e instanceof java.util.concurrent.ExecutionException && e.getCause() != null
+                ? e.getCause() : e;
+        if (cause instanceof IllegalArgumentException) {
+            error(ex, 400, cause.getMessage());
+            return;
+        }
+        error(ex, 500, what + ": " + cause);
+    }
+
     private static void handleWorldBlock(HttpExchange ex) throws IOException {
         if (!authorized(ex)) {
             return;
@@ -238,12 +282,7 @@ public final class ProbeServer {
         CompletableFuture<Map<String, Object>> future = new CompletableFuture<>();
         mc.execute(() -> {
             try {
-                ResourceKey<Level> key = ResourceKey.create(
-                        Registries.DIMENSION, Identifier.parse(dim));
-                ServerLevel level = mc.getLevel(key);
-                if (level == null) {
-                    level = mc.overworld();
-                }
+                ServerLevel level = requireLevel(dim);
                 BlockPos pos = new BlockPos(x, y, z);
                 BlockState state = level.getBlockState(pos);
                 BlockEntity be = level.getBlockEntity(pos);
@@ -262,7 +301,7 @@ public final class ProbeServer {
         try {
             ok(ex, future.get(10, TimeUnit.SECONDS));
         } catch (Exception e) {
-            error(ex, 500, "world query failed: " + e.getMessage());
+            fail(ex, e, "world query failed");
         }
     }
 
@@ -273,10 +312,11 @@ public final class ProbeServer {
         int x = intQuery(ex, "x", 0);
         int y = intQuery(ex, "y", 64);
         int z = intQuery(ex, "z", 0);
+        String dim = strQuery(ex, "dim", "minecraft:overworld");
         CompletableFuture<Map<String, Object>> future = new CompletableFuture<>();
         mc.execute(() -> {
             try {
-                ServerLevel level = mc.overworld();
+                ServerLevel level = requireLevel(dim);
                 BlockPos pos = new BlockPos(x, y, z);
                 BlockState state = level.getBlockState(pos);
                 Map<String, Object> data = new LinkedHashMap<>();
@@ -304,7 +344,7 @@ public final class ProbeServer {
         try {
             ok(ex, future.get(10, TimeUnit.SECONDS));
         } catch (Exception e) {
-            error(ex, 500, "world break failed: " + e.getMessage());
+            fail(ex, e, "world break failed");
         }
     }
 
@@ -316,6 +356,7 @@ public final class ProbeServer {
         int y = intQuery(ex, "y", 64);
         int z = intQuery(ex, "z", 0);
         String playerName = strQuery(ex, "player", "Dev");
+        String dim = strQuery(ex, "dim", "minecraft:overworld");
         CompletableFuture<Map<String, Object>> future = new CompletableFuture<>();
         mc.execute(() -> {
             try {
@@ -329,7 +370,7 @@ public final class ProbeServer {
                     future.complete(data);
                     return;
                 }
-                ServerLevel level = mc.overworld();
+                ServerLevel level = requireLevel(dim);
                 BlockPos pos = new BlockPos(x, y, z);
                 data.put("before", String.valueOf(BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock())));
                 GameType oldMode = player.gameMode.getGameModeForPlayer();
@@ -358,7 +399,7 @@ public final class ProbeServer {
         try {
             ok(ex, future.get(10, TimeUnit.SECONDS));
         } catch (Exception e) {
-            error(ex, 500, "world mine failed: " + e.getMessage());
+            fail(ex, e, "world mine failed");
         }
     }
 
@@ -370,10 +411,11 @@ public final class ProbeServer {
         int y = intQuery(ex, "y", 64);
         int z = intQuery(ex, "z", 0);
         int r = Math.min(16, Math.max(1, intQuery(ex, "r", 4)));
+        String dim = strQuery(ex, "dim", "minecraft:overworld");
         CompletableFuture<Map<String, Object>> future = new CompletableFuture<>();
         mc.execute(() -> {
             try {
-                ServerLevel level = mc.overworld();
+                ServerLevel level = requireLevel(dim);
                 AABB box = new AABB(x - r, y - r, z - r, x + r + 1, y + r + 1, z + r + 1);
                 List<Map<String, Object>> drops = new ArrayList<>();
                 int total = 0;
@@ -398,7 +440,7 @@ public final class ProbeServer {
         try {
             ok(ex, future.get(10, TimeUnit.SECONDS));
         } catch (Exception e) {
-            error(ex, 500, "items query failed: " + e.getMessage());
+            fail(ex, e, "items query failed");
         }
     }
 
@@ -787,6 +829,7 @@ public final class ProbeServer {
             String side = "front";
             String playerName = null;
             List<String> newLines = null;
+            String dim = "minecraft:overworld";
             if (post) {
                 JsonObject body = readBody(ex);
                 pos = posFromBody(body);
@@ -799,6 +842,9 @@ public final class ProbeServer {
                 if (body.has("player")) {
                     playerName = body.get("player").getAsString();
                 }
+                if (body.has("dim")) {
+                    dim = body.get("dim").getAsString();
+                }
                 if (body.has("lines") && body.get("lines").isJsonArray()) {
                     newLines = new ArrayList<>();
                     for (var element : body.getAsJsonArray("lines")) {
@@ -808,15 +854,17 @@ public final class ProbeServer {
             } else {
                 pos = requireBlockPosQuery(ex);
                 side = strQuery(ex, "side", "front");
+                dim = strQuery(ex, "dim", "minecraft:overworld");
             }
             final String finalOp = op;
             final String finalPlayer = playerName;
             final List<String> finalLines = newLines;
+            final String finalDim = dim;
             SignTextSlot slot = "back".equalsIgnoreCase(side) ? SignTextSlot.BACK : SignTextSlot.FRONT;
             var future = new java.util.concurrent.CompletableFuture<Map<String, Object>>();
             mc.execute(() -> {
                 try {
-                    ServerLevel level = mc.overworld();
+                    ServerLevel level = requireLevel(finalDim);
                     BlockEntity be = level.getBlockEntity(pos);
                     if (!(be instanceof SignBlockEntity sign)) {
                         future.complete(null);
@@ -892,7 +940,7 @@ public final class ProbeServer {
                 }
                 ok(ex, data);
             } catch (Exception e) {
-                error(ex, 500, "sign read failed: " + e.getMessage());
+                fail(ex, e, "sign read failed");
             }
         } catch (IllegalArgumentException e) {
             error(ex, 400, e.getMessage());
@@ -925,6 +973,7 @@ public final class ProbeServer {
             String op = "read";
             String command = null;
             Boolean auto = null;
+            String dim = "minecraft:overworld";
             if (post) {
                 JsonObject body = readBody(ex);
                 pos = posFromBody(body);
@@ -937,16 +986,21 @@ public final class ProbeServer {
                 if (body.has("auto")) {
                     auto = body.get("auto").getAsBoolean();
                 }
+                if (body.has("dim")) {
+                    dim = body.get("dim").getAsString();
+                }
             } else {
                 pos = requireBlockPosQuery(ex);
+                dim = strQuery(ex, "dim", "minecraft:overworld");
             }
             final String finalOp = op;
             final String finalCommand = command;
             final Boolean finalAuto = auto;
+            final String finalDim = dim;
             var future = new java.util.concurrent.CompletableFuture<Map<String, Object>>();
             mc.execute(() -> {
                 try {
-                    ServerLevel level = mc.overworld();
+                    ServerLevel level = requireLevel(finalDim);
                     BlockEntity be = level.getBlockEntity(pos);
                     if (!(be instanceof CommandBlockEntity commandBlock)) {
                         future.complete(null);
@@ -1001,15 +1055,8 @@ public final class ProbeServer {
                     return;
                 }
                 ok(ex, data);
-            } catch (java.util.concurrent.ExecutionException e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof IllegalArgumentException) {
-                    error(ex, 400, cause.getMessage());
-                } else {
-                    error(ex, 500, "command block failed: " + cause);
-                }
             } catch (Exception e) {
-                error(ex, 500, "command block failed: " + e.getMessage());
+                fail(ex, e, "command block failed");
             }
         } catch (IllegalArgumentException e) {
             error(ex, 400, e.getMessage());

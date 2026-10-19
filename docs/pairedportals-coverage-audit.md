@@ -9,8 +9,10 @@
 |---|---|---|
 | 全自动可测 | 6 组 / 覆盖 38 项功能里的 33 项 | 点火、配对、穿越、拆除、重建、跨维度、持久化、命令族、日志语义全部可驱动可断言 |
 | 半自动（要抓图或降级判据） | 1 组 | 紫屏 / 落点观感 / 生物群系，`/screenshot` 能拍到但没有像素断言 |
-| 必须人眼 | 4 类 | 音效、actionbar 是否真显示、紫屏动画、F3 读数观感 |
-| 套件缺口（需补代码才能全自动） | 6 条 | 见 §5：G1/G2/G3/G4/G6 待做，G5 已修并复跑验证 |
+| 必须人眼 | 3 类 | 音效、紫屏动画、F3 读数观感 |
+| 套件缺口 | 已全部补齐 | 首轮 6 条（G1–G6）里 G5 当时即修；G1/G3/G4/G6 已在后续一轮补齐并实测，G2 明确不做（见 §5） |
+
+> 说明：本表是**首轮审计**的结论。首轮之后套件补了四个通用能力（客户端读消息 `GET /chat/tail`、`/world/*` 等维度的 `dim` 参数、场景 DSL 的 `retry`、断言里的 `contains`/`text` 子串），§3 里原来标 ❌ 的 actionbar 文案类条目因此转成 ✅，§5 记录了补法。
 
 ## 1. 被测方的可观测面
 
@@ -42,11 +44,15 @@ PairedPortals 是纯服务端 mod（`fabric.mod.json` 只有 `main` 入口），
 | 拆框 | `POST /world/break`（仅主世界）或 `{"cmd":"setblock ... air"}`（任意维度） | `/world/break|mine` 硬写 `mc.overworld()` |
 | 读对门（跨维度） | `GET /world/block?...&dim=minecraft:the_nether` | |
 | 断言命令回执 | `POST /command` → `GET /log/tail` | `/command` 只回 `{cmd,result:0}`，**不回文本** |
-| 确定性等待 | `mcdev freeze true` → `step N` → 读状态 | 场景 `waitMs` 在**发请求前** sleep，且没有轮询/重试 |
+| 确定性等待 | `mcdev freeze true` → `step N` → 读状态 | 场景等状态用步骤级 `retry`（首轮时还没有，见 §5 G4） |
 
 ## 3. 功能 × 可测性矩阵
 
 > 「驱动」= 用什么把它跑起来；「断言」= 判据落在哪。判定：✅ 全自动 / 🟡 半自动 / ❌ 必须人眼。
+>
+> **本表是首轮（补齐前）的判定**，保留原样当基线。标 ❌/🟡 的 actionbar 文案类条目在 G1 补齐后可以用
+> `GET /chat/tail` + `expect.contains: {"data.actionbar": "..."}` 断言（§4/§5）；标 ❌ 的音效、紫屏观感、
+> F3 读数不受影响。
 
 | # | 功能组 | 驱动 | 断言 | 判定 |
 |---|---|---|---|---|
@@ -87,39 +93,39 @@ PairedPortals 是纯服务端 mod（`fabric.mod.json` 只有 `main` 入口），
 | 36 | 语言 zh/en | — | 服务端日志恒英文、控制台输出恒 EN ⇒ 服务端侧只能测英文；zh 文案要客户端 `language` | 🟡 |
 | 37 | 掉线/重连、多人 | 客户端 `/connect`、`/quit` | 二次连接后门仍可用 | ✅ |
 
-## 4. 「必须人眼」的 4 类，为什么自动不了
+## 4. 「必须人眼」的 3 类，为什么自动不了
 
 1. **音效**：服务端没有音频数据流；客户端探针也没有声音捕获接口。
-2. **actionbar 是否真显示**：服务端只发 `ClientboundSetActionBarTextPacket`，探针没有「读玩家最近收到的系统消息」的钩子。
-3. **紫屏动画与加载过渡**：`/screenshot` 能拍到画面，但判据是「紫色遮罩出现过」这类像素级现象，没有图像断言。
-4. **F3 读数、生物群系观感**：截图 + 人眼。
+2. **紫屏动画与加载过渡**：`/screenshot` 能拍到画面，但判据是「紫色遮罩出现过」这类像素级现象，没有图像断言。
+3. **F3 读数、生物群系观感**：截图 + 人眼。
 
-前三类的共同根因是「缺少客户端侧的消息/画面断言钩子」，不是 mod 不可测 —— 见 §5 的 G1。
+（首轮列在这里的「actionbar 是否真显示」已经转成自动：客户端探针的 `GET /chat/tail` 直接读客户端 GUI 的 actionbar 字段与聊天历史，见 §5 的 G1。）
 
-## 5. 套件缺口（按「补了能多测什么」排序）
+## 5. 套件缺口与补齐情况（首轮按「补了能多测什么」排序）
 
-| # | 缺口 | 影响 | 补法（成本） |
+| # | 缺口 | 影响 | 状态 |
 |---|---|---|---|
-| G1 | 客户端探针读不到玩家收到的 actionbar / 系统消息 | 5 类文案（未绑定/已绑定/无权限/空牌/两块牌）在有玩家时只能人眼；`state: PENDING/BOUND` 只能间接从 `info` 推 | 客户端加一条 `/chat/tail`：hook `ClientboundSetActionBarTextPacket` / 读 `Gui` 的 overlay message 字段，环形缓存最近 N 条（**中等**） |
-| G2 | 服务端 `/player/state` 没有 `dimension` | 玩家跨维度只能靠客户端 `/status` 或日志 `travel:` 断言 | 加一个字段（**一行**） |
-| G3 | `/world/break`、`/world/mine`、sign、command-block 硬写 `mc.overworld()` | 下界/末地的拆框只能用 `setblock air` 命令代替；真拆（带掉落、带邻居更新）测不到 | 全部改走 `dim` 参数（**小**，但动 5 处） |
-| G4 | 场景 DSL 没有轮询/重试 | 传送后只能 `waitMs` 死等；慢机器上会假失败 | 加 `repeat` / `until`（**小**） |
-| G5 | ~~`devrun` 的 gradle 客户端壳用相对取证路径~~ **已修并复跑验证** | 修复前：客户端壳启动即失败、无任何输出、外层干等 300 s | `$EvidenceDir` 在 `New-Item` 之后 `Resolve-Path` 成绝对路径；实测客户端 33 s 就绪、玩家进世界、`op` 成功 |
-| G6 | **场景断言只能**精确等值，不能 grep/正则 | `/log/tail` 拿到的是 lines 数组，`expect.json` 的 `data.lines[0].message` 之类只能比对整行原文 ⇒ 「日志里出现过 `went down with its twin`」这种断言**写不进场景**，只能跑完看 `results.json` | 二选一：① `scripts/devrun.ps1` 给 step 加 `expect.log: {"contains": "..."}`；② 探针加 `GET /log/find?pattern=` 返回 `{count,matches}` 让场景直接断言 `data.count`（**小**） |
+| G1 | 客户端探针读不到玩家收到的 actionbar / 系统消息 | 5 类文案（未绑定/已绑定/无权限/空牌/两块牌）在有玩家时只能人眼；`state: PENDING/BOUND` 只能间接从 `info` 推 | **已修**：客户端 `GET /chat/tail?n=30` 返回 `actionbar` / `actionbarSource`（`by-name`/`by-order`）/ `count` / `lines` / `last` / `text`。读的是客户端 GUI 当前状态（`Hud.getChat()` 的 `GuiMessage` 列表 + `overlayMessageString`），所以对任何 mod 都通用；字段名先按官方名找，找不到退回「声明顺序里第一个 `Component` 字段」（Fabric 生产环境是 intermediary 名，靠这条兜住） |
+| G2 | 服务端 `/player/state` 没有 `dimension` | 玩家跨维度只能靠客户端 `/status` 或日志 `travel:` 断言 | **不做**（按需求方口径：那是配合另一个可选的多世界 mod 才需要的口径；客户端 `/status` 已有 `dimension`） |
+| G3 | `/world/break`、`/world/mine`、sign、command-block 硬写 `mc.overworld()` | 下界/末地的拆框只能用 `setblock air` 命令代替；真拆（带掉落、带邻居更新）测不到 | **已修**：6 条路由都接受 `dim` 参数（query 或 body），统一走新 helper `requireLevel(dim)`；未知维度从「静默回落主世界」改成 **400 + 已载维度清单**（静默回落会让人误判成功） |
+| G4 | 场景 DSL 没有轮询/重试 | 传送后只能 `waitMs` 死等；慢机器上会假失败 | **已修**：步骤级 `"retry": {"times": N, "intervalMs": M}`，任一次断言通过即早退，`results.json` 的 `steps[].attempts` 记录用了几次；`waitMs` 只在首次尝试前生效 |
+| G5 | ~~`devrun` 的 gradle 客户端壳用相对取证路径~~ **已修并复跑验证** | 修复前：客户端壳启动即失败、无任何输出、外层干等 300 s | 已修（`$EvidenceDir` 在 `New-Item` 之后 `Resolve-Path` 成绝对路径）；实测客户端 33 s 就绪、玩家进世界、`op` 成功 |
+| G6 | **场景断言只能**精确等值，不能 grep/正则 | `/log/tail` 拿到的是 lines 数组，`data.lines[0].message` 之类只能比对整行原文 ⇒ 「日志里出现过 `went down with its twin`」写不进场景 | **已修**：`expect.contains`（点号路径取字段后断言**包含**子串）+ `expect.text`（对原始响应体断言包含子串，日志用这个）。没有新增日志检索端点：`/log/tail` + `expect.text` 已经够 |
 
-`/command` 不回文本（只能靠 `/log/tail`）不算缺口 —— 控制台回执确实进日志，用「唯一戳 + n 窗口」断言即可。
+`/command` 不回文本（只能靠 `/log/tail`）不算缺口 —— 控制台回执确实进日志，用「唯一戳 + n 窗口」断言即可；现在还能用 `expect.text` 直接断言。
 
 两条使用注意（不是缺陷，但会骗人）：
 
 - `-Mods` 把 jar 复制进 `<ServerDir>\mods` 后**不清理**。跑完带 mod 的用例再跑不带 `-Mods` 的对照组时，被测 mod 还在，对照就不成立。跑完手动删，或者专门起一个只放探针的实例。
-- 场景里 `waitMs` 在**发请求前** sleep，且没有轮询；`server-only.json` 这类给 `side=server` 实例写的契约用例在双端实例上必然 FAIL（有玩家时不会 404），别混用。
+- `waitMs` 在**发请求前** sleep；需要等某个状态出现时用 `retry` 而不是把 `waitMs` 调大。`server-only.json` 这类给 `side=server` 实例写的契约用例在双端实例上必然 FAIL（有玩家时不会 404），别混用。
 
 ## 6. 建议的落地顺序
 
 1. 先跑 **G5 修复后的客户端冒烟**：`devrun -Family fabric -Scenario scenarios\server-only.json -Mods <pairedportals.jar>` 必须真的进世界（`/status` 有 `dimension`），否则后面全是空中楼阁。
 2. 按 §3 的 1→2→6→7→10→19→20→22 顺序写场景（点火、配对、穿越、拆门、重建、持久化），每条只断言**两个**面：门洞方块 + `list`/`info` 文本。这三样齐全时，用例就已经覆盖 mod 的绝大部分逻辑。
-3. G1 做掉之后，§3 里所有 ❌ 文案类断言可以一起转成 ✅（音效除外）。
-4. G2/G3/G4 属于「测试顺手就扩」的改动，不必为 PairedPortals 单独开一轮。
+3. G1/G6 已补齐：有玩家时的 actionbar 文案用 `GET /chat/tail` + `expect.contains: {"data.actionbar": "..."}` 断言；日志语义用 `expect.text` 断言子串 —— §3 里原来标 ❌ 的文案类条目现在都能写成 ✅（音效除外）。
+4. G3/G4 已补齐：跨维度的拆/读直接用 `dim` 参数；等状态出现用 `retry`，不要再靠 `waitMs` 调大。
+5. `scenarios/capabilities.json` 是新能力的自检场景（12 条，通用、与本项目无关的 mod 无关），改这些能力时先跑它。
 
 ## 7. 已知的被测方文档不一致（写断言前必须核对源码）
 
@@ -137,7 +143,10 @@ PairedPortals 是纯服务端 mod（`fabric.mod.json` 只有 `main` 入口），
 | 同上（G5 修复后） | `-EvidenceDir <绝对路径>` | ✅ 客户端 33 s 就绪 → `/connect` 进世界（`player=Player<NNN>`）→ `op` 200 → 5 条场景 4 PASS |
 | 控制台回执是否可断言 | 场景：`pairedportals help` / `list` / `mcdev status` + `GET /log/tail?n=60` | ✅ 全部以 `System chat: …` 进环形缓冲，实读到 `0 portal(s): 0 bound pair(s) (0 door(s)), 0 door(s) waiting for a partner; activation: all (everyone)`、`tick=697 players=1 frozen=false step=0`、以及 mod 自己的 `[pairedportals] loaded 0 portal(s) from the world registry` |
 | `server-only` 场景在「双端实例」上 | 同上 | 1 条 FAIL：`loud-failure-no-player` 期望 404 `PLAYER_NOT_FOUND`，实得 200 —— **不是 bug**：`server-only.json` 是给 `side=server` 实例用的契约用例，双端实例有玩家在线时必然 200。写 PairedPortals 场景时别复用这条 |
+| 新能力的自检 | `devrun -Instance <fabric\|forge\|neoforge> -Scenario scenarios\capabilities.json` | ✅ **三家各 12/12 PASS**：下界 `forceload`+`setblock`+`/world/block?dim=` 读 stone → `/world/break?dim=` 真拆（`removed: true`）→ 读 air → 未知维度 400；`say` 之后客户端 `/chat/tail` 用 `retry` 读到聊天（`actionbarSource: by-name`），`title … actionbar` 之后读到 `probe-actionbar-ok`；服务端 `/log/tail` 用 `expect.text` 断言到同一行 |
 
 ## 附：下一步第一刀（建议）
 
-先只做 G6（断言通道）+ 一个 `scenarios/pairedportals-core.json`：砌框 → 放牌写字 → 点火 → 断言门洞方块 + `list` 头行 + `info` 的 `state: PENDING` → 第二扇同文字门 → `state: BOUND` → 实体进门 → `travel:` 行。这一条跑通，就证明「整条自动化链路对第三方 mod 成立」，剩下的功能是按同一模板复制。
+G1/G3/G4/G6 齐了，剩下就是写场景：一个 `scenarios/pairedportals-core.json` —— 砌框 → 放牌写字 → 点火 → 断言门洞方块 + `list` 头行 + `info` 的 `state: PENDING` → 第二扇同文字门 → `state: BOUND` → 实体进门 → `travel:` 行。这一条跑通，就证明「整条自动化链路对第三方 mod 成立」，剩下的功能是按同一模板复制。
+
+写的时候用新能力：等状态用 `retry`，文案用 `expect.contains: {"data.actionbar": …}`，日志用 `expect.text: [...]`；跨维度一侧的方块读写带 `dim` 参数。

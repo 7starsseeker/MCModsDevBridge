@@ -32,6 +32,12 @@
         }
     target：server（服务端探针）或 client（客户端探针）。expect.json 用点号路径，值按
     「字符串化后相等」比较（布尔/数字同样适用），这样 `true` 与 `"true"` 不会互相误判。
+    expect 还有两种**包含**断言（等值断不了的东西用它）：
+        "expect": { "contains": { "data.actionbar": "some text" } }    按点号路径取字段，断言其字符串形式包含子串
+        "expect": { "text": ["System chat:", "[Server thread/INFO]"] }   断言原始响应体包含这些子串（日志用）
+    等时序的步骤用 retry（「通过就早退」，比写死 waitMs 稳）：
+        "retry": { "times": 20, "intervalMs": 250 }    最多发 20 次、间隔 250ms，任一次断言通过即停；
+    waitMs 仍然只在**首次**尝试前生效（用于「上一步的副作用要等一下」）。
 
 .PARAMETER Mods
     额外要塞进测试服 mods/ 的被测 mod jar 路径（PairedPortals 那类）。会先按文件名去重再复制。
@@ -287,9 +293,36 @@ function Get-JsonPath($Object, [string]$Path) {
 
 function Compare-Expect($Body, $Expect) {
     if ($null -eq $Expect) { return @{ Pass = $true; Reason = 'no expect' } }
-    if ($null -eq $Expect.json) { return @{ Pass = $true; Reason = 'status only' } }
+    $checked = 0
+    # expect.text：原始响应体里必须出现的子串（日志、纯文本都在这里断言）。
+    # 存在的理由：json 只能做精确等值，而「日志里有一行含某段文字」这种断言没法精确等值。
+    if ($null -ne $Expect.text) {
+        $raw = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Compress -Depth 8 }
+        foreach ($needle in @($Expect.text)) {
+            $checked++
+            if (-not $raw.Contains([string]$needle)) {
+                return @{ Pass = $false; Reason = "text is missing '$needle'" }
+            }
+        }
+    }
+    # expect.contains：按点号路径取字段，断言该字段的字符串形式**包含**子串。
+    # 注意这里**不能**跟着 expect.json 一起 early-return：只写 contains 不写 json 是最常见的用法。
+    if ($null -ne $Expect.contains) {
+        try { $json = $Body | ConvertFrom-Json } catch { return @{ Pass = $false; Reason = 'body is not JSON' } }
+        foreach ($key in $Expect.contains.PSObject.Properties.Name) {
+            $checked++
+            $needle = [string]$Expect.contains.$key
+            $got = Get-JsonPath $json $key
+            $gotText = if ($null -eq $got) { '' } else { [string]$got }
+            if (-not $gotText.Contains($needle)) {
+                return @{ Pass = $false; Reason = "json.$key does not contain '$needle' (got '$gotText')" }
+            }
+        }
+    }
+    if ($null -eq $Expect.json) { return @{ Pass = $true; Reason = "ok ($checked check(s))" } }
     try { $json = $Body | ConvertFrom-Json } catch { return @{ Pass = $false; Reason = 'body is not JSON' } }
     foreach ($key in $Expect.json.PSObject.Properties.Name) {
+        $checked++
         $want = [string]$Expect.json.$key
         $got = Get-JsonPath $json $key
         $gotText = if ($null -eq $got) { '<missing>' } else { [string]$got }
@@ -297,7 +330,7 @@ function Compare-Expect($Body, $Expect) {
             return @{ Pass = $false; Reason = "json.$key expected '$want' got '$gotText'" }
         }
     }
-    return @{ Pass = $true; Reason = 'ok' }
+    return @{ Pass = $true; Reason = "ok ($checked check(s))" }
 }
 
 try {
@@ -496,27 +529,46 @@ try {
             $bodyText = if ($bodyArg -is [string]) { $bodyArg } else { $bodyArg | ConvertTo-Json -Compress -Depth 8 }
             $bodyArg = $bodyText.Replace('{{player}}', $player)
         }
-        if ($null -ne $step.waitMs) { Start-Sleep -Milliseconds ([int]$step.waitMs) }   # 发请求前先等（如 tp 之后等落地）
-        $r = Invoke-Probe $base $method $path $bodyArg
-        $bodyText = if ($r.Body -is [string]) { $r.Body } else { $r.Body | ConvertTo-Json -Compress -Depth 8 }
-        $statusOk = $true
-        if ($null -ne $step.expect) {
-            if ($null -ne $step.expect.status) { $statusOk = ($r.Status -eq [int]$step.expect.status) }
-            elseif ($null -ne $step.expect.statusIn) { $statusOk = ($step.expect.statusIn -contains $r.Status) }
+        # retry：{ "times": 10, "intervalMs": 300 } —— 同一个请求重复到断言通过或用完次数。
+        # 存在的理由：客户端/服务端的可见延迟（聊天回显、actionbar、tick 推进）没有可订阅的完成信号，
+        # 只能等；waitMs 是死等固定时长，retry 是「通过就早退」，慢机器上也不必写死大常量。
+        $maxAttempts = 1
+        $retryInterval = 0
+        if ($null -ne $step.retry) {
+            if ($null -ne $step.retry.times) { $maxAttempts = [Math]::Max(1, [int]$step.retry.times) }
+            if ($null -ne $step.retry.intervalMs) { $retryInterval = [Math]::Max(0, [int]$step.retry.intervalMs) }
         }
-        $jsonCheck = Compare-Expect $r.Body $step.expect
-        $pass = $statusOk -and $jsonCheck.Pass
-        $reason = if ($statusOk -and $jsonCheck.Pass) { 'ok' } else {
-            if (-not $statusOk) { "status expected $($step.expect.status) got $($r.Status)" } else { $jsonCheck.Reason }
+        $attempts = 0
+        while ($true) {
+            $attempts++
+            if ($attempts -eq 1 -and $null -ne $step.waitMs) {
+                Start-Sleep -Milliseconds ([int]$step.waitMs)   # 仅首次尝试前等（如 tp 之后等落地）；重试间隔走 retry.intervalMs
+            }
+            $r = Invoke-Probe $base $method $path $bodyArg
+            $bodyText = if ($r.Body -is [string]) { $r.Body } else { $r.Body | ConvertTo-Json -Compress -Depth 8 }
+            $statusOk = $true
+            if ($null -ne $step.expect) {
+                if ($null -ne $step.expect.status) { $statusOk = ($r.Status -eq [int]$step.expect.status) }
+                elseif ($null -ne $step.expect.statusIn) { $statusOk = ($step.expect.statusIn -contains $r.Status) }
+            }
+            $jsonCheck = Compare-Expect $r.Body $step.expect
+            $pass = $statusOk -and $jsonCheck.Pass
+            $reason = if ($statusOk -and $jsonCheck.Pass) { 'ok' } else {
+                if (-not $statusOk) { "status expected $($step.expect.status) got $($r.Status)" } else { $jsonCheck.Reason }
+            }
+            if ($pass -or $attempts -ge $maxAttempts) { break }
+            if ($retryInterval -gt 0) { Start-Sleep -Milliseconds $retryInterval }
         }
+        if ($pass -and $attempts -gt 1) { $reason = "ok (after $attempts attempts)" }
         $null = $Results.Add([pscustomobject]@{
-                id      = $step.id
-                target  = $step.target
-                request = "$method $path"
-                status  = $r.Status
-                pass    = $pass
-                reason  = $reason
-                body    = $bodyText
+                id       = $step.id
+                target   = $step.target
+                request  = "$method $path"
+                status   = $r.Status
+                attempts = $attempts
+                pass     = $pass
+                reason   = $reason
+                body     = $bodyText
             })
         $flag = if ($pass) { 'PASS' } else { 'FAIL' }
         Write-Host ("  [{0}] {1,-22} {2,4} {3}" -f $flag, $step.id, $r.Status, $reason)

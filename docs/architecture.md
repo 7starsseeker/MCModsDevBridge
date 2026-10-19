@@ -389,6 +389,16 @@ routes.add(Route.get("/world/block")
 > （客户端 `/chat/send`、`/block/sign/edit`、`/block/sign`、`/block/command-block`；服务端 `/block/sign`、`/block/command-block`），
 > 累计覆盖 24/58；`/chat/suggest` 故意不开（异步推送与同步端点契约不合）。记录 §15。
 > `server-teleport` 是跨端编排的第一条真链路（记录 §11）。
+>
+> **通用能力补丁（覆盖审计之后）**，四条都只加通用面、不为任何被测 mod 特化：
+> ① 客户端 `GET /chat/tail?n=30`（capability `chat_read`）读客户端**当前**看到的聊天与 actionbar
+> （`actionbar` / `actionbarSource` / `lines` / `text`），用来断言「玩家屏幕上真的出现了」——
+> 这是服务端 `/log/tail` 证明不了的那一半；
+> ② 服务端 `/world/block|break|mine`、`/items`、`/block/sign`、`/block/command-block` 统一接受 `dim`
+> 参数并走 `requireLevel(dim)`，未知维度回 **400 + 已载维度清单**（旧行为是静默回落主世界）；
+> ③ 场景 DSL 步骤级 `retry: {times, intervalMs}`（通过即早退，`results.json` 记 `attempts`）；
+> ④ 断言加 `expect.contains`（字段包含子串）与 `expect.text`（响应体包含子串）。
+> 自检场景 `scenarios/capabilities.json`（12 条，Fabric 实测 12/12）。
 
 这是「玩家操作全集」那 1,000-1,500 行的落点。设计核心是 **一个语义 API + 两个后端**（I5）。
 

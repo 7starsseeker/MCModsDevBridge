@@ -18,10 +18,12 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.chat.GuiMessage;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundSignUpdatePacket;
 import net.minecraft.world.InteractionHand;
@@ -104,6 +106,7 @@ public final class ClientProbeServer {
             route("/quit", ClientProbeServer::handleQuit, "core");
             // ---- P4 第二批：聊天与特殊方块 UI（架构 §8.1 的 out-of-scope 补回）----
             route("/chat/send", ClientProbeServer::handleChatSend, "chat");
+            route("/chat/tail", ClientProbeServer::handleChatTail, "chat_read");
             route("/block/sign", ClientProbeServer::handleBlockSign, "block_extra");
             route("/block/sign/edit", ClientProbeServer::handleBlockSignEdit, "block_extra");
             route("/block/command-block", ClientProbeServer::handleBlockCommandBlock, "block_extra");
@@ -905,6 +908,160 @@ public final class ClientProbeServer {
         } catch (Exception e) {
             error(ex, 500, "chat send failed: " + e);
         }
+    }
+
+    /**
+     * {@code GET /chat/tail?n=30} —— 客户端**当前看到**的系统消息与 actionbar 文本。
+     *
+     * <p>为什么需要这条：服务端探针能证明「服务端发了什么」（{@code /log/tail} 里的
+     * {@code System chat:}），但证明不了「玩家屏幕上确实出现了」——聊天被客户端过滤、
+     * actionbar 只存在于客户端，这两件事服务端日志里都看不出来。这里读的是客户端 GUI
+     * 的真状态，不缓冲、不重放，所以天然通用：任何 mod 往聊天/actionbar 写东西都断言得到。</p>
+     *
+     * <p>返回字段：{@code actionbar} 当前可见的 actionbar 文本（空串=没有）、
+     * {@code actionbarSource} 取到它的反射路径（{@code by-name}/{@code by-order}，
+     * 出问题时用来区分「没写」和「读错了字段」）、{@code count} 聊天历史条数、
+     * {@code last} 最后一条、{@code lines} 最后 n 条（旧→新）、{@code text}
+     * 把 lines 用换行连起来（场景里断言子串用这个最省事）。</p>
+     *
+     * <p>为什么不缓存成事件流：缓存要按加载器注册事件（三家 API 各不相同），而读当前状态
+     * 只需反射同一组字段，三加载器共用一份代码；时序问题交给场景 DSL 的 {@code retry} 等。</p>
+     */
+    private static void handleChatTail(HttpExchange ex) throws IOException {
+        if (!authorized(ex)) {
+            return;
+        }
+        int n = intQuery(ex, "n", 30);
+        if (n <= 0) {
+            error(ex, 400, "n must be positive");
+            return;
+        }
+        try {
+            Map<String, Object> data = onClient(() -> {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.gui == null || mc.gui.hud == null) {
+                    throw new IllegalStateException("client GUI is not ready");
+                }
+                List<String> lines = readChatLines(mc.gui.hud.getChat());
+                int from = Math.max(0, lines.size() - n);
+                List<String> tail = new ArrayList<>(lines.subList(from, lines.size()));
+                Map<String, Object> d = new LinkedHashMap<>();
+                d.put("count", lines.size());
+                d.put("lines", tail);
+                d.put("last", tail.isEmpty() ? "" : tail.get(tail.size() - 1));
+                d.put("text", String.join("\n", tail));
+                Object[] overlay = readActionbar(mc.gui.hud);
+                d.put("actionbar", overlay[0]);
+                d.put("actionbarSource", overlay[1]);
+                return d;
+            });
+            ok(ex, data);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            error(ex, 400, e.getMessage());
+        } catch (Exception e) {
+            error(ex, 500, "chat tail failed: " + e);
+        }
+    }
+
+    // ---- 聊天 / actionbar 的读取（{@link #handleChatTail} 专用）----
+    // 两个字段都没有公开 getter，只能反射；缓存 Field 是因为每次读都 getDeclaredFields 太浪费。
+
+    private static Field chatListField;
+    private static Field actionbarField;
+    private static String actionbarSource = "unknown";
+
+    private static List<String> readChatLines(Object chatComponent) {
+        if (chatListField == null) {
+            chatListField = findChatListField(chatComponent.getClass());
+        }
+        Object raw;
+        try {
+            raw = chatListField.get(chatComponent);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("cannot read chat history: " + e);
+        }
+        List<String> out = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object entry : list) {
+                if (entry instanceof GuiMessage message) {
+                    out.add(message.content().getString());
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 先按官方字段名 {@code allMessages}（Forge/NeoForge 运行时是官方名），找不到再按泛型参数
+     * 为 {@link GuiMessage} 的 {@code List} 字段匹配 —— Fabric 运行时字段名被重映射成
+     * {@code field_xxxx}，但**类型**会被一起重映射，所以按类型找是稳的。
+     */
+    private static Field findChatListField(Class<?> type) {
+        for (Field f : type.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                continue;
+            }
+            if (f.getName().equals("allMessages")) {
+                f.setAccessible(true);
+                return f;
+            }
+        }
+        for (Field f : type.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                continue;
+            }
+            if (!List.class.isAssignableFrom(f.getType())) {
+                continue;
+            }
+            if (f.getGenericType() instanceof java.lang.reflect.ParameterizedType pt
+                    && pt.getActualTypeArguments()[0] instanceof Class<?> arg
+                    && GuiMessage.class.isAssignableFrom(arg)) {
+                f.setAccessible(true);
+                return f;
+            }
+        }
+        throw new IllegalStateException(
+                "cannot find the chat history field on " + type.getName() + " (game version changed?)");
+    }
+
+    /** 返回 {@code {文本, 取到的路径}}：路径写进响应，读错字段时看得见，而不是静默返回空串。 */
+    private static Object[] readActionbar(net.minecraft.client.gui.Hud hud) {
+        if (actionbarField == null) {
+            try {
+                Field byName = hud.getClass().getDeclaredField("overlayMessageString");
+                byName.setAccessible(true);
+                actionbarField = byName;
+                actionbarSource = "by-name";
+            } catch (NoSuchFieldException e) {
+                actionbarField = firstComponentField(hud.getClass());
+                actionbarSource = "by-order";
+            }
+        }
+        try {
+            Object value = actionbarField.get(hud);
+            String text = value instanceof Component c ? c.getString() : "";
+            return new Object[]{text, actionbarSource};
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("cannot read the action bar: " + e);
+        }
+    }
+
+    /**
+     * 按声明顺序取第一个非 static 的 {@link Component} 字段。{@code Hud} 里它依次是
+     * actionbar、title、subtitle —— 重映射只改名，不改声明顺序。
+     */
+    private static Field firstComponentField(Class<?> type) {
+        for (Field f : type.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                continue;
+            }
+            if (f.getType() == Component.class) {
+                f.setAccessible(true);
+                return f;
+            }
+        }
+        throw new IllegalStateException(
+                "cannot find a Component field on " + type.getName() + " (game version changed?)");
     }
 
     /**
