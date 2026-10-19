@@ -1,6 +1,6 @@
 {
   "name": "fixture-both",
-  "description": "两端都必须有的 mod（lab/fixture）：两端都装时握手成立。装的是测试样本，不是被测业务 mod。",
+  "description": "两端都必须有的 mod（lab/fixtures/fixture）：两端都装时握手成立。装的是测试样本，不是被测业务 mod。",
   "player": "mcdev",
   "steps": [
     { "id": "server-has-fixture", "target": "server", "method": "GET", "path": "/mods",

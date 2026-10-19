@@ -20,6 +20,8 @@
 **它只提供能力，不提供「该测什么」的答案。**
 
 - **不带针对某个 mod 的测试用例**：测哪些功能、断言什么文本、跑到多细，取决于你当时在开发什么。`scenarios/` 里的几个 JSON 是**示例与自检**，不是覆盖率承诺，也不是推荐清单。
+- **`lab/fixtures/` 与 `scenarios/fixtures/` 是套件自己的自测样本**：它们是拿来自证「套件能把『装在哪一端』变成 PASS/FAIL」的，不是给你照抄的模板，也不进发布产物。
+- **不替你做决定**：凡是「下一步该干嘛 / 这个现象可能是什么原因」的内容，一律以**提示**的形式给出并标「不参与判定」，判绿判红只来自探针、日志、API 与你自己写的断言。
 - **不替代人自己上手**：音效、紫屏过渡动画、F3 读数、UI 手感、连招的爽快程度，这些没有数据通道，仍然要人进游戏看。套件的价值是把「能不能自动验」的那部分从人手里接过来，把人的时间留给只能靠人的那部分。
 - **不替你判断「够了」**：场景跑绿只说明你写下的断言成立，不说明功能完整。
 
@@ -123,14 +125,16 @@ pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端
 
 | 端点 | 作用 |
 |---|---|
-| `POST /world/singleplayer?name=<id>&mode=normal\|flat&gamemode=survival\|creative&allowCommands=…&seed=…&reuse=true` | 新建或打开单人世界；返回 `levelId` / `worldDir` / `renamed` / `openedExisting` |
+| `POST /world/singleplayer?name=<id>&mode=normal\|flat&gamemode=survival\|creative&allowCommands=…&seed=…&reuse=true&backup=ask\|skip\|do` | 新建或打开单人世界；返回 `levelId` / `worldDir` / `renamed` / `openedExisting` / `backupAction` |
 | `POST /world/leave` | 存档并回标题界面 |
 
 - `mode=flat` 用 `FLAT_ALL_DIMENSIONS` 预设：平地、生成快，适合测试；`normal` 是普通地形。
 - `reuse=true` 时同名世界存在就**打开**它（同一份数据反复用，不在 `saves` 里越堆越多）；否则新建，
   撞名自动加 `-2` / `-3`，返回 `renamed: true`。
 - 创建是异步的：用客户端 `/status` 的 `inWorld` 轮询等它就绪（`scenarios/singleplayer.json` 就是范例）。
-- 单人世界里的内置服务端也会加载 `environment: "*"` 的 mod ⇒ 它证明的是「装在同一份客户端里时生效」，
+- 打开**已有**单人世界时，26.3 会先弹 `BackupConfirmScreen`（「备份再进 / 跳过直接进」）。
+  `backup=ask`（默认）什么都不点 —— 要不要备份由你决定；`skip` 跳过备份直接进（自动化场景用这个），
+  `do` 真备份一次。实际动作看返回的 `backupAction`（`ask` / `no-screen` / `skipped` / `backed-up` / `still-blocked`）。- 单人世界里的内置服务端也会加载 `environment: "*"` 的 mod ⇒ 它证明的是「装在同一份客户端里时生效」，
   **不等于**「专用服没装这个 mod 时的表现」。后者要靠两台实例（只看得到各自 `/mods`）。
 
 ```powershell
@@ -161,16 +165,16 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\single
     {
       "name": "fixture-both",
       "instance": "fam-fabric",
-      "scenario": "scenarios/fixture-both.json",
-      "serverMods": ["lab/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
-      "clientMods": ["lab/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
+      "scenario": "scenarios/fixtures/fixture-both.json",
+      "serverMods": ["lab/fixtures/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
+      "clientMods": ["lab/fixtures/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
       "note": "两端都装：握手双向都通"
     },
     {
       "name": "expect-missing-half",
       "instance": "fam-fabric",
-      "scenario": "scenarios/fixture-client-missing.json",
-      "serverMods": ["lab/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
+      "scenario": "scenarios/fixtures/fixture-client-missing.json",
+      "serverMods": ["lab/fixtures/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
       "expectFail": true
     }
   ]
@@ -206,15 +210,12 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\single
 | `lab/fabric/` `lab/forge/` `lab/neoforge/` | 三家加载器的构建骨架与入口类 |
 | `scripts/` | `devrun` 编排、`devrun-matrix` 用例矩阵、实例登记、部署向导、探针装卸（`install-probe` / `remove-probe`）、被测 mod 装卸（`install-mod`）、打包、DSH 插件安装 |
 | `scripts/lib/` | `Env.ps1`（java/代理解析）、`Launch.ps1`（按版本清单拼客户端命令行） |
-| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities` / `singleplayer` / `fixture-*`（三端组合的样本场景）；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
+| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities` / `singleplayer`；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
+| `scenarios/fixtures/` | 与 `lab/fixtures/` 配套的 6 个样本场景（两端都必须 / 缺一侧 × 只客户端 / 只服务端），只用于验证套件自己的断言能力 |
 | `tools/dsh-plugin/` | DSH 插件（`mcdev_devrun` / `mcdev_scenarios`） |
 | `docs/` | 可行性评估、逐阶段移植记录、部署拓扑、状态总览 |
 | `docs/examples/` | **参考资料**，不是能力清单：拿一个具体 mod 演示「功能 → 可断言步骤」怎么写（见下节） |
-| `lab/fixture/` | **测试样本 mod（Fabric，6.8 KB）**：唯一用途是证明「两端都必须有的 mod」能被断言 —— 服务端等握手、客户端发握手，缺一侧就写日志。不是示例 mod，也不是能力清单 |
-| `lab/fixture-client/` | **测试样本 mod（Fabric，3.0 KB，`environment: "client"`）**：证明「只有客户端一半」的 mod 在单人世界/连服时照样生效，而服务端 `/mods` 里根本没有它 |
-| `lab/fixture-server/` | **测试样本 mod（Fabric，3.1 KB，`environment: "server"`）**：证明「只有服务端一半」的 mod 在客户端根本没有它时照样收到 JOIN、照样 tick |
-| `lab/fixture-forge/` | **同一个样本的 Forge 版（7.0 KB，modId 同样是 `mcdev_fixture`）**：语义与 `lab/fixture` 一致 —— 客户端发握手、服务端收并回 ack、缺一侧就写日志。构建 + 服务端加载 + 客户端那一半都实跑过（`fixture-both` 5/5、两条「缺一侧」4/4 与 5/5，见 `docs/architecture.md` §9.8） |
-| `lab/fixture-neoforge/` | **同一个样本的 NeoForge 版（6.8 KB，modId 同样是 `mcdev_fixture`）**：同上（`fixture-both` 5/5、两条「缺一侧」4/4 与 5/5） |
+| `lab/fixtures/` | **套件自己的自测样本**（5 个最小 mod：两端都必须 1 + 只客户端 1 + 只服务端 1 + 同一样本的 Forge/NeoForge 版各 1）。唯一用途是证明「装在哪一端」能被断言成 PASS/FAIL；**不是模板、不是示例 mod**，见 [lab/fixtures/README.md](lab/fixtures/README.md) |
 
 先读 [docs/STATE.md](docs/STATE.md) 了解当前进度；[docs/architecture.md](docs/architecture.md) 讲整体设计；[docs/deployment-topology.md](docs/deployment-topology.md) 讲实例与端口分配。
 

@@ -319,8 +319,10 @@ function Wait-Player([int]$TimeoutSec) {
         Write-Host '  服务端日志里的原因：'
         Write-Host $reason
     }
+    # 下面是提示，不是判定：白名单只是「最像」的原因之一，究竟卡在哪要人自己核对日志。
+    # 套件不做「我判断你被白名单拦了」这种结论，只把找到的证据摆出来。
     if ($reason -match 'white-list') {
-        Write-Host '  提示：服务端开了白名单。离线登录（online-mode=false）时白名单要写**离线 UUID**，不是玩家名。'
+        Write-Host '  提示（仅供参考，不参与判定）：日志里出现 white-list，服务端可能开了白名单。离线登录（online-mode=false）时白名单要写**离线 UUID**，不是玩家名。'
     }
     throw $msg
 }
@@ -680,7 +682,7 @@ try {
         $dim = ''
         if ($st.Status -eq 200) { $dim = [string](($st.Body | ConvertFrom-Json).data.dimension) }
         if ($dim) { Write-Host "  客户端已在世界内：dimension=$dim" }
-        else { Write-Host '  客户端还没进任何世界（停在界面层）：只适合验证 UI/输入相关能力' }
+        else { Write-Host '  提示（不参与判定）：客户端停在界面层、不在任何世界里。这样跑只验得到客户端本地行为；要不要这么跑由你决定。' }
         $PhaseTimes['connect'] = 0
     } else {
         Write-Phase "4/6 连接 ${GamePort}"
@@ -699,10 +701,10 @@ try {
             $cld = ($cst.Body | ConvertFrom-Json).data
             Write-Host "  客户端加载器：$($cld.loader)（实例声明 $ClientFamily / 服务端 $Family）"
             if ($cld.loader -and $cld.loader -ne $ClientFamily) {
-                Write-Host "  注意：客户端探针报的加载器与实例声明的 client.loader（$ClientFamily）不一致 —— 检查 client.version / 装进去的探针 jar"
+                Write-Host "  提示（不参与判定）：客户端探针报的加载器与实例声明的 client.loader（$ClientFamily）不一致 —— 可能 client.version 选错或装进去的探针 jar 不对，请自行核对"
             }
             if ($cld.loader -and $cld.loader -ne $Family) {
-                Write-Host '  注意：两端加载器不同 —— 被测 mod 需要各自加载器的版本，装错的 jar 不会加载（用 /mods 的 contains/notContains 断言）'
+                Write-Host '  提示（不参与判定）：两端加载器不同。被测 mod 通常需要各自加载器的版本；装错的 jar 会被加载器静默跳过，所以「装没装上」请用 /mods 的 contains/notContains 断言'
             }
         }
 
@@ -790,16 +792,20 @@ try {
     $serverTail = if (Test-Path $serverOut) { Get-Content $serverOut -Tail 60 } else { @() }
     $clientTail = if (Test-Path $clientOut) { Get-Content $clientOut -Tail 40 } else { @() }
 
-    # 下一步：第一轮自动测试跑完后该干什么。computer use 是 DSH 的官方可选插件
+    # 提示：第一轮自动测试跑完后可选的下一步。computer use 是 DSH 的官方可选插件
     # （真鼠标 + 真截图），不归本套件管；这里只把「要不要用它」问出口。
+    # kind / affectsVerdict 两个字段是给读 results.json 的脚本看的：
+    # 这一段是建议，判绿还是判红只由 steps[] 决定，它不参与、也不改变结论。
     $cuState = if ($Cfg.computerUse) { [string]$Cfg.computerUse } else { (Get-ComputerUseState).state }
     $NextStep = [ordered]@{
-        computerUse = $cuState
-        ask         = ($cuState -eq 'enabled')
-        question    = '第一轮自动测试跑完了：直接手测，还是再用 computer use 跑一轮？'
-        options     = @('直接手测', '用 computer use 再跑一轮（真实鼠标 + 真截图）')
-        hint        = '截图与真实桌面操作由 DSH 的 computer use 提供，本套件不实现截图。'
-        onFailure   = '有失败项时：-KeepRunning 重跑留现场，再用 computer use 进现场看状态/截图找可疑点'
+        kind          = 'hint'
+        affectsVerdict = $false
+        computerUse   = $cuState
+        ask           = ($cuState -eq 'enabled')
+        question      = '第一轮自动测试跑完了：直接手测，还是再用 computer use 跑一轮？（由你决定，套件不替你选）'
+        options       = @('直接手测', '用 computer use 再跑一轮（真实鼠标 + 真截图）')
+        hint          = '截图与真实桌面操作由 DSH 的 computer use 提供，本套件不实现截图。'
+        onFailure     = '有失败项时：-KeepRunning 重跑留现场，再用 computer use 进现场看状态/截图找可疑点（同样是建议）'
     }
 
     $resultsPath = Join-Path $EvidenceDir 'results.json'
@@ -829,13 +835,17 @@ try {
     $srvLoader = if ($finalServer) { [string]$finalServer.data.loader } else { '-' }
     $cliLoader = if ($finalClient) { [string]$finalClient.data.loader } else { '-' }
     $lines.Add("- 加载器：服务端 ``$srvLoader`` / 客户端 ``$cliLoader``")
-    if ($finalClient -and $finalClient.data.loader -and $finalClient.data.loader -ne $srvLoader) {
-        $lines.Add('- 两端加载器不同：被测 mod 需要各自加载器的版本；装错的 jar 会被静默跳过（`/mods` 才是硬证据）。')
+    # 只有「两端都有且加载器确实不同」才写这张提示 —— side=client 时服务端不存在，
+    # 拿 '-' 去比会得出「两端加载器不同」这种假提示（实测踩过）。
+    if ($srvLoader -ne '-' -and $cliLoader -ne '-' -and $cliLoader -ne $srvLoader) {
+        $lines.Add('- 提示（不参与判定）：两端加载器不同 —— 被测 mod 通常需要各自加载器的版本；装错的 jar 会被静默跳过（`/mods` 才是硬证据）。')
     }
     $lines.Add("- 结论：**PASS=$passCount FAIL=$failCount total=$($Results.Count)**")
     $lines.Add('- 阶段耗时（秒）：' + (($PhaseTimes.GetEnumerator() | ForEach-Object { "$($_.Key)=$([math]::Round($_.Value,1))" }) -join ' / '))
     $lines.Add('')
-    $lines.Add('## 下一步')
+    $lines.Add('## 提示（不参与判定）')
+    $lines.Add('')
+    $lines.Add('下面只是建议。判绿还是判红，只由上面那条结论决定，这一段不改变它。')
     $lines.Add('')
     if ($NextStep.computerUse -eq 'enabled') {
         $lines.Add('第一轮自动测试跑完了。接下来二选一：① 直接手测；② 再用 DSH 的 computer use 跑一轮（真实鼠标 + 真截图）。')
@@ -898,13 +908,12 @@ finally {
 
     if ($NextStep -and -not $PreflightOnly) {
         Write-Host ''
-        Write-Host '下一步'
+        Write-Host '提示（不参与判定 —— 判定结果只看上面的 PASS/FAIL）'
         if ($NextStep.computerUse -eq 'enabled') {
-            Write-Host '  1) 直接手测'
-            Write-Host '  2) 再用 computer use 跑一轮（真实鼠标 + 真截图；截图由 DSH 侧提供，本套件不实现）'
-            Write-Host '  另：这次有失败项时，-KeepRunning 重跑能留住现场，再用 computer use 进去截图、看可疑点、读现场状态。'
+            Write-Host '  可选下一步，由你决定：1) 直接手测；2) 再用 computer use 跑一轮（真实鼠标 + 真截图；截图由 DSH 侧提供，本套件不实现）'
+            Write-Host '  另：这次有失败项时，-KeepRunning 重跑能留住现场，再用 computer use 进去截图、看可疑点、读现场状态（同样是建议）。'
         } else {
-            Write-Host '  直接手测（本机没启用 DSH 的 computer use；要截图就装那个官方可选插件，然后重跑一次）'
+            Write-Host '  可选下一步：直接手测。本机没启用 DSH 的 computer use；要截图就装那个官方可选插件，然后重跑一次。'
         }
     }
 }

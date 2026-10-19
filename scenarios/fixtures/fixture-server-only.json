@@ -1,6 +1,6 @@
 {
   "name": "fixture-server-only",
-  "description": "仅服务端 mod（lab/fixture-server，environment=server）只装服务端也生效：客户端根本没有它，服务端这一半照样收到 JOIN、照样 tick ⇒ 「任意一端即可」这一类里服务端那一极成立。",
+  "description": "仅服务端 mod（lab/fixtures/fixture-server，environment=server）只装服务端也生效：客户端根本没有它，服务端这一半照样收到 JOIN、照样 tick ⇒ 「任意一端即可」这一类里服务端那一极成立。",
   "player": "mcdev",
   "steps": [
     {

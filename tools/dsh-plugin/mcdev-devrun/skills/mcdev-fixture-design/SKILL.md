@@ -15,11 +15,11 @@ client-only、跨端、握手、日志证据、`/mods` 对照、加载 ≠ 生�
 
 | 工程 | 端装配 | modId | `environment` | 它证明什么 |
 |---|---|---|---|---|
-| `lab\fixture` | **both**（真两半） | `mcdev_fixture` | `*` | 正常路径：两侧握手能走通（基线） |
-| `lab\fixture-client` | **client-only**：只有 `src\client\java`，**没有 `src\main\java`** | `mcdev_fixture_client` | `client` | 装到专用服务器时「服务端那半边缺席」是什么现象 |
-| `lab\fixture-server` | **server-only**：只有 `src\main\java` | `mcdev_fixture_server` | `server` | 客户端缺席时的现象 |
-| `lab\fixture-forge` | both，**单 source set** + `dist == CLIENT` 守卫 | `mcdev_fixture` | `mods.toml side="BOTH"` | 同一套判据在 Forge 上成立 |
-| `lab\fixture-neoforge` | 同 Forge | `mcdev_fixture` | 同上 | 同上，NeoForge |
+| `lab\fixtures\fixture` | **both**（真两半） | `mcdev_fixture` | `*` | 正常路径：两侧握手能走通（基线） |
+| `lab\fixtures\fixture-client` | **client-only**：只有 `src\client\java`，**没有 `src\main\java`** | `mcdev_fixture_client` | `client` | 装到专用服务器时「服务端那半边缺席」是什么现象 |
+| `lab\fixtures\fixture-server` | **server-only**：只有 `src\main\java` | `mcdev_fixture_server` | `server` | 客户端缺席时的现象 |
+| `lab\fixtures\fixture-forge` | both，**单 source set** + `dist == CLIENT` 守卫 | `mcdev_fixture` | `mods.toml side="BOTH"` | 同一套判据在 Forge 上成立 |
+| `lab\fixtures\fixture-neoforge` | 同 Forge | `mcdev_fixture` | 同上 | 同上，NeoForge |
 
 三条设计要点：
 

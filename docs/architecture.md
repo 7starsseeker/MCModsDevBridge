@@ -579,11 +579,13 @@ platform/<loader>/
 
 `devrun.ps1` 在第 4 步（连接后）打印两端加载器，不一致时额外提示「被测 mod 需要各自加载器的版本」；`summary.md` 的头部也记这一行，取证的人不必翻 `results.json`。
 
-### 9.3 「两端都必须」怎么证：`lab/fixture` + 三条场景
+### 9.3 「两端都必须」怎么证：`lab/fixtures/fixture` + 三条场景
+
+> 2026-10-20 位置调整：5 个样本工程从 `lab/fixture*` 收进 `lab/fixtures/`，6 个配套场景从 `scenarios/fixture-*` 收进 `scenarios/fixtures/`。理由写在 [`lab/fixtures/README.md`](../lab/fixtures/README.md)：它们是**套件自己的自测样本**，摆在 `lab/` 顶层与 `scenarios/` 顶层会让第一次打开仓库的人把它们当成模板与推荐清单。
 
 上面三组覆盖的是**装没装上**。还有一类 mod 只有在两端都有对应实现时才生效（自定义 payload、客户端渲染、按键）。这类 mod 的失败**通常没有硬错误**：缺一侧时游戏照常跑，只是功能静默不发生。所以判据必须由 mod 自己给出来。
 
-`lab/fixture`（6.8 KB，Fabric）就是为此写的最小样本 —— **它不是示例 mod，也不含任何业务功能**：
+`lab/fixtures/fixture`（6.8 KB，Fabric）就是为此写的最小样本 —— **它不是示例 mod，也不含任何业务功能**：
 
 | 端 | 做什么 | 留下的可断言日志（前缀 `[mcdev_fixture]`） |
 |---|---|---|
@@ -612,7 +614,7 @@ platform/<loader>/
 
 | 端点 | 参数 | 返回 |
 |---|---|---|
-| `POST /world/singleplayer` | `name`（世界 id，默认 `mcdev`）、`mode=normal\|flat`、`gamemode`、`allowCommands`、`seed`、`reuse` | `levelId` / `worldDir` / `renamed` / `openedExisting` / `mode` / `seed` |
+| `POST /world/singleplayer` | `name`（世界 id，默认 `mcdev`）、`mode=normal\|flat`、`gamemode`、`allowCommands`、`seed`、`reuse`、`backup=ask\|skip\|do` | `levelId` / `worldDir` / `renamed` / `openedExisting` / `mode` / `seed` / `backup` / `backupAction` |
 | `POST /world/leave` | — | `left` / `was` |
 
 实现要点（`ClientProbeServer.handleWorldSingleplayer`）：
@@ -624,7 +626,11 @@ platform/<loader>/
 - 撞名自动 `-2` / `-3`；`reuse=true` 时同名存在则 `WorldOpenFlows#openWorld(id, onFail)` 打开它 ——
   反复跑同一场景不会把 `saves` 撑大。
 - 创建/打开是**异步**的：接口返回只代表「已提交」，就绪判据是客户端 `/status` 的 `inWorld`（`linked` 在单人世界里也为 true）。
-- 已在世界里再调创建 → `409`；`mode` / `gamemode` / `seed` 非法 → `400`。
+- **打开已有世界会先弹 `BackupConfirmScreen`**（26.3 的行为；新建世界不弹）。`backup=ask`（默认）什么都不点 ——
+  要不要备份是使用者的选择，套件不替他决定；`skip` 点「跳过直接进」，`do` 点「备份再进」。
+  没有点任何东西时 `backupAction` 是 `ask`，点了则是 `skipped` / `backed-up`（最长等 15 s，等不到返回 `still-blocked`）。
+  实现上 `SKIP_AND_JOIN` 是 **private** 常量（javap 实测），所以「跳过」按排除法找 —— `BackupConfirmScreen` 上
+  除 `BACKUP_AND_JOIN` 之外的那个 `Button` 就是它；点击走 `mouseMoved` + `onClick`，与 `/ui/click` 同一条路径。- 已在世界里再调创建 → `409`；`mode` / `gamemode` / `seed` 非法 → `400`。
 
 `scenarios/singleplayer.json`（5 步）就是这条链路的自检：create(flat, reuse) → 等 `inWorld` → 断言 `dimension`/`linked` → leave → 等 `inWorld=false`。
 实测：`devrun -Instance sp-client -Scenario scenarios\singleplayer.json`（`side=client`，无服务端进程）**5/5 PASS，exit 0**（取证 `tmp/devrun-sp`）。
@@ -634,7 +640,7 @@ platform/<loader>/
 
 ### 9.5 只有客户端一半的 mod + `client.loader`：跨族不再只能「碰运气」（2026-10-20 实测）
 
-四类 mod 里，②「只有客户端才有意义」的样本至此才补齐。`lab/fixture-client/`（Fabric，3.0 KB）的
+四类 mod 里，②「只有客户端才有意义」的样本至此才补齐。`lab/fixtures/fixture-client/`（Fabric，3.0 KB）的
 `fabric.mod.json` 是 `"environment": "client"`、**只有 client 入口、没有 server 入口**；
 它在 `onInitializeClient` 里记 `[mcdev_fixture_client] client side active`，在 `ClientPlayConnectionEvents.JOIN` 里记
 `joined world (client-only half)`，进世界 20 tick 后再记 `tick probe alive (client-only)`
@@ -644,8 +650,8 @@ platform/<loader>/
 
 | 场景 | 实例 | 断言 |
 |---|---|---|
-| `scenarios/fixture-client-only.json`（6 步） | `side=client`（单人世界） | 建世界 → `inWorld` → 客户端 `/mods` 有它 → 日志 `joined world (client-only half)` → 日志 `tick probe alive (client-only)` → 退出 |
-| `scenarios/fixture-client-only-server.json`（4 步） | `side=both`（专用服没有它） | 服务端 `/mods` **notContains** 它 + 客户端 `/mods` **contains** 它 + 客户端两条日志照旧 ⇒ 「服务端也必须装」对这类 mod 不成立 |
+| `scenarios/fixtures/fixture-client-only.json`（6 步） | `side=client`（单人世界） | 建世界 → `inWorld` → 客户端 `/mods` 有它 → 日志 `joined world (client-only half)` → 日志 `tick probe alive (client-only)` → 退出 |
+| `scenarios/fixtures/fixture-client-only-server.json`（4 步） | `side=both`（专用服没有它） | 服务端 `/mods` **notContains** 它 + 客户端 `/mods` **contains** 它 + 客户端两条日志照旧 ⇒ 「服务端也必须装」对这类 mod 不成立 |
 
 实测：单人世界 **6/6 PASS**（`tmp/devrun-fix-client-sp`）、连专用服 **4/4 PASS**（`tmp/devrun-fix-client-srv`），都是 exit 0。
 
@@ -660,17 +666,17 @@ platform/<loader>/
 
 ### 9.6 「任意一端即可」的样本 + 反向跨族 + 连不上时先看服务端日志（2026-10-20 实测）
 
-四类 mod 的最后一块是「任意一端即可」。`lab/fixture-server/`（Fabric，3.1 KB）的 `fabric.mod.json` 是
+四类 mod 的最后一块是「任意一端即可」。`lab/fixtures/fixture-server/`（Fabric，3.1 KB）的 `fabric.mod.json` 是
 `"environment": "server"`、**只有 server 入口、没有 client 入口**：`onInitializeServer` 记
 `[mcdev_fixture_server] server side active`，`ServerPlayConnectionEvents.JOIN` 记 `joined (server-only half) <player>`，
 有玩家在线的第 20 tick 记 `tick probe alive (server-only)`。
 
 | 场景 | 实例 | 断言 | 实测 |
 |---|---|---|---|
-| `scenarios/fixture-server-only.json`（4 步） | `side=both`，服务端装了它、客户端没有 | 服务端 `/mods` contains + 客户端 `/mods` notContains + 服务端两条日志 | **4/4 PASS**（`tmp/devrun-fix-server-only`） |
+| `scenarios/fixtures/fixture-server-only.json`（4 步） | `side=both`，服务端装了它、客户端没有 | 服务端 `/mods` contains + 客户端 `/mods` notContains + 服务端两条日志 | **4/4 PASS**（`tmp/devrun-fix-server-only`） |
 
-这四块合起来覆盖四类 mod 的「装在哪一端」语义：`lab/fixture`（两端都必须，缺一侧 FAIL）、
-`lab/fixture-client`（只有客户端，服务端 notContains）、`lab/fixture-server`（只有服务端，客户端 notContains）、
+这四块合起来覆盖四类 mod 的「装在哪一端」语义：`lab/fixtures/fixture`（两端都必须，缺一侧 FAIL）、
+`lab/fixtures/fixture-client`（只有客户端，服务端 notContains）、`lab/fixtures/fixture-server`（只有服务端，客户端 notContains）、
 以及用真实 mod 做的「任意一端」实测（`/mods` 两侧各看一眼）。
 
 **反向跨族**：此前的跨族只验过「fabric 服 + forge 客」。补上反方向 `instances/cross-cf.json`
@@ -1061,9 +1067,9 @@ N1–N3 的触发条件是「受支持 minor 版本数达到 2」，不是日期
 
 | 用例 | 场景 | 结果 |
 |---|---|---|
-| `fixture-both` | `scenarios/fixture-both.json`（两侧都装） | 绿，`PASS=5 FAIL=0` |
-| `fixture-client-missing` | `scenarios/fixture-client-missing.json`（只装服务端） | 绿，`PASS=4 FAIL=0` |
-| `fixture-server-missing` | `scenarios/fixture-server-missing.json`（只装客户端） | 绿，`PASS=5 FAIL=0` |
+| `fixture-both` | `scenarios/fixtures/fixture-both.json`（两侧都装） | 绿，`PASS=5 FAIL=0` |
+| `fixture-client-missing` | `scenarios/fixtures/fixture-client-missing.json`（只装服务端） | 绿，`PASS=4 FAIL=0` |
+| `fixture-server-missing` | `scenarios/fixtures/fixture-server-missing.json`（只装客户端） | 绿，`PASS=5 FAIL=0` |
 | `cross-fabric-srv-forge-cli` | `scenarios/capabilities.json`（fabric 服 + forge 客） | 绿，`PASS=14 FAIL=0` |
 | `cross-forge-srv-fabric-cli` | `scenarios/capabilities.json`（forge 服 + fabric 客） | 绿，`PASS=14 FAIL=0` |
 
@@ -1084,7 +1090,7 @@ N1–N3 的触发条件是「受支持 minor 版本数达到 2」，不是日期
 
 ## 9.8 同一份样本、三个加载器（2026-10-20，服务端加载 + 客户端那一半都已实跑）
 
-`lab/fixture`（Fabric）之外，2026-10-20 补了 `lab/fixture-forge/` 与 `lab/fixture-neoforge/`。
+`lab/fixtures/fixture`（Fabric）之外，2026-10-20 补了 `lab/fixtures/fixture-forge/` 与 `lab/fixtures/fixture-neoforge/`。
 三个工程**共用同一个 modId `mcdev_fixture`**，也共用同一串日志文本
 （`client sent hello` / `server got hello from` / `client got ack` / `client missing for` /
 `server missing (no ack in`）—— 于是同一份场景 JSON 与同一串断言可以跨加载器复用，
@@ -1092,8 +1098,8 @@ N1–N3 的触发条件是「受支持 minor 版本数达到 2」，不是日期
 
 | 工程 | 产物 | 构建 |
 |---|---|---|
-| `lab/fixture-forge/` | `build/libs/mcdev_fixture-1.0.0.jar`（7,016 B） | `gradlew build` exit 0 |
-| `lab/fixture-neoforge/` | `build/libs/mcdev_fixture-1.0.0.jar`（6,819 B） | `gradlew build` exit 0 |
+| `lab/fixtures/fixture-forge/` | `build/libs/mcdev_fixture-1.0.0.jar`（7,016 B） | `gradlew build` exit 0 |
+| `lab/fixtures/fixture-neoforge/` | `build/libs/mcdev_fixture-1.0.0.jar`（6,819 B） | `gradlew build` exit 0 |
 
 两端在代码里的分工与 Fabric 版一致，差别只在加载器 API：
 
@@ -1129,9 +1135,9 @@ N1–N3 的触发条件是「受支持 minor 版本数达到 2」，不是日期
 
 | 场景 | 装在哪 | forge | neoforge |
 |---|---|---|---|
-| `scenarios/fixture-both.json` | 两端 | `tmp\detect-fix-forge2` **5/5** | `tmp\detect-fix-neoforge2` **5/5** |
-| `scenarios/fixture-client-missing.json` | 只服务端 | `tmp\detect-fix-forge-clientmissing` **4/4** | `tmp\detect-fix-neo-clientmissing` **4/4** |
-| `scenarios/fixture-server-missing.json` | 只客户端 | `tmp\detect-fix-forge-servermissing` **5/5** | `tmp\detect-fix-neo-servermissing` **5/5** |
+| `scenarios/fixtures/fixture-both.json` | 两端 | `tmp\detect-fix-forge2` **5/5** | `tmp\detect-fix-neoforge2` **5/5** |
+| `scenarios/fixtures/fixture-client-missing.json` | 只服务端 | `tmp\detect-fix-forge-clientmissing` **4/4** | `tmp\detect-fix-neo-clientmissing` **4/4** |
+| `scenarios/fixtures/fixture-server-missing.json` | 只客户端 | `tmp\detect-fix-forge-servermissing` **5/5** | `tmp\detect-fix-neo-servermissing` **5/5** |
 
 全部 `exit 0`。两条超时路径的实测延迟也记一下：`server-reports-missing` 3 / 4 次尝试后命中（5 s 量级），
 `client-reports-missing` 9 / 8 次尝试后命中（7 s 量级）—— 对应 fixture 里 100 / 120 tick 的判定，

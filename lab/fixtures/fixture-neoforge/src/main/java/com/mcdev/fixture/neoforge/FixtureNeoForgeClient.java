@@ -7,7 +7,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 /**
- * 客户端那一半 —— 与 {@code lab/fixture} 的 {@code FixtureClient} 对位。
+ * 客户端那一半 —— 与 {@code lab/fixtures/fixture} 的 {@code FixtureClient} 对位。
  *
  * <p>只在 {@code dist == CLIENT} 时由 {@link FixtureNeoForge} 的构造器调用，
  * 因此专用服务器上这个类（以及它引用的 {@code net.minecraft.client.*}）永远不会被加载。

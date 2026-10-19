@@ -1,6 +1,6 @@
 {
   "name": "fixture-client-only-server",
-  "description": "仅客户端 mod（lab/fixture-client）连一个**没有**它的专用服：服务端 /mods 里没有它，客户端这一半却照样活跃 ⇒ 「服务端也必须装」对这类 mod 不成立。",
+  "description": "仅客户端 mod（lab/fixtures/fixture-client）连一个**没有**它的专用服：服务端 /mods 里没有它，客户端这一半却照样活跃 ⇒ 「服务端也必须装」对这类 mod 不成立。",
   "player": "mcdev",
   "steps": [
     {

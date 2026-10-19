@@ -24,15 +24,15 @@
     {
       "name": "fixture-both-fabric",
       "instance": "fam-fabric",
-      "scenario": "scenarios/fixture-both.json",
-      "serverMods": ["lab/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
-      "clientMods": ["lab/fixture/build/libs/mcdev_fixture-1.0.0.jar"]
+      "scenario": "scenarios/fixtures/fixture-both.json",
+      "serverMods": ["lab/fixtures/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
+      "clientMods": ["lab/fixtures/fixture/build/libs/mcdev_fixture-1.0.0.jar"]
     },
     {
       "name": "expected-missing-half",
       "instance": "fam-fabric",
-      "scenario": "scenarios/fixture-client-missing.json",
-      "serverMods": ["lab/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
+      "scenario": "scenarios/fixtures/fixture-client-missing.json",
+      "serverMods": ["lab/fixtures/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
       "expectFail": true
     }
   ]

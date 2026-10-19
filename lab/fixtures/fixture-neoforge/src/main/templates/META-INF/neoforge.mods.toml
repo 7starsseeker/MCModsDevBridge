@@ -10,7 +10,7 @@ displayName="${mod_name}"
 authors="MCDev"
 
 description='''
-「两端都必须」的最小测试样本（NeoForge 版），与 lab/fixture（Fabric 版）语义对位。
+「两端都必须」的最小测试样本（NeoForge 版），与 lab/fixtures/fixture（Fabric 版）语义对位。
 客户端进世界后自己发一条握手命令，服务端收到后回一句 ack；
 两端日志各留一条只有「两端都在场」才会出现的话。
 不是示例 mod，也不是套件能力：它只用于验证「装没装上、生效没生效」能被断言。

@@ -1,12 +1,12 @@
 {
   "name": "fixture-client-only",
-  "description": "仅客户端 mod（lab/fixture-client，environment=client）在单人世界里照样生效：内置服务端那一半根本不加载它，客户端这一半该活。整条场景只打客户端探针（实例 side=client）。",
+  "description": "仅客户端 mod（lab/fixtures/fixture-client，environment=client）在单人世界里照样生效：内置服务端那一半根本不加载它，客户端这一半该活。整条场景只打客户端探针（实例 side=client）。",
   "steps": [
     {
       "id": "world-create",
       "target": "client",
       "method": "POST",
-      "path": "/world/singleplayer?mode=flat&name=mcdev-sp-client&reuse=true",
+      "path": "/world/singleplayer?mode=flat&name=mcdev-sp-client&reuse=true&backup=skip",
       "expect": { "status": 200, "contains": { "data.mode": "flat" } },
       "note": "客户端自己起内置服务端（专用服不参与）"
     },

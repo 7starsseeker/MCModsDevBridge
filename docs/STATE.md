@@ -50,14 +50,14 @@
 > jar 放进 forge 客 mods（`/mods` 的 `ids` 少一个，1 条**预期** FAIL，`tmp/devrun-sides-both`）。最后一条给出结论：
 > **装错加载器的 jar 加载器只是静默跳过**，连接照常、游戏照常，只有 `/mods` 能把它变成可断言的差异。
 >
-> **2026-10-20 01:40 增补（「两端都必须」有了最小样本）**：新增 `lab/fixture/`（Fabric，构建产物 6.8 KB）
+> **2026-10-20 01:40 增补（「两端都必须」有了最小样本）**：新增 `lab/fixtures/fixture/`（Fabric，构建产物 6.8 KB）
 > —— 服务端注册 `/mcdevfixture`、玩家进服 100 tick 内没等到握手就记 `client missing for <player>`；客户端
 > 进世界 20 tick 后自动敲一次、120 tick 没回执就记 `server missing (no ack in 120 ticks)`。握手走**玩家命令**
 > 而不是自定义 payload：命令注册是 fabric-api 里最稳的一层，回执又天然进日志，不绑定 payload API 版本。
-> 三条场景 `scenarios/fixture-{both,client-missing,server-missing}.json` 实测：**5/5 / 4/4 / 5/5 全 PASS**
+> 三条场景 `scenarios/fixtures/fixture-{both,client-missing,server-missing}.json` 实测：**5/5 / 4/4 / 5/5 全 PASS**
 > （`tmp/devrun-fixture-both`、`-fixture-client-missing2`、`-fixture-server-missing2`）。为此补了第四种断言
 > `expect.textNot`（原始响应体不得包含子串）—— 缺一侧的证明全靠「不该出现的没出现」，否则只能人眼看。
-> `lab/fixture` **不是示例 mod**，它只证明「套件能把缺一侧变成 PASS/FAIL」；真实 mod 的握手方式各不相同，
+> `lab/fixtures/fixture` **不是示例 mod**，它只证明「套件能把缺一侧变成 PASS/FAIL」；真实 mod 的握手方式各不相同，
 > 断言要按它的日志/文档来写。
 >
 > **2026-10-20 01:55 增补（单人世界入口：仅客户端 mod / 单机行为）**：客户端探针新增
@@ -73,11 +73,11 @@
 > 不等于「专用服没装这个 mod 时的表现」（那要靠两台实例各自的 `/mods`）。
 >
 > **2026-10-20 02:10 增补（仅客户端 mod 有了样本；加载器拆成 client.loader）**：四类 mod 的②补齐 ——
-> `lab/fixture-client/`（Fabric，3.0 KB，`"environment": "client"`、只有 client 入口）在
+> `lab/fixtures/fixture-client/`（Fabric，3.0 KB，`"environment": "client"`、只有 client 入口）在
 > `onInitializeClient` 记 `client side active`、`ClientPlayConnectionEvents.JOIN` 记 `joined world (client-only half)`、
 > 进世界 20 tick 再记 `tick probe alive (client-only)`（「加载」与「在跑」分成两行，不靠猜）。两条场景：
-> `scenarios/fixture-client-only.json`（`side=client` 单人世界，6 步，实测 **6/6 PASS**，`tmp/devrun-fix-client-sp`）、
-> `scenarios/fixture-client-only-server.json`（专用服没有它，4 步：服务端 `/mods` notContains + 客户端 contains +
+> `scenarios/fixtures/fixture-client-only.json`（`side=client` 单人世界，6 步，实测 **6/6 PASS**，`tmp/devrun-fix-client-sp`）、
+> `scenarios/fixtures/fixture-client-only-server.json`（专用服没有它，4 步：服务端 `/mods` notContains + 客户端 contains +
 > 两条日志，实测 **4/4 PASS**，`tmp/devrun-fix-client-srv`）⇒「服务端也必须装」对这类 mod 不成立。
 > 同批把加载器拆开：实例登记新增 **`client.loader`**（`register-instance.ps1 -ClientLoader`、
 > `setup-wizard.ps1 -ClientLoader`），不给就默认等于服务端 `loader`；它决定 `gradle` 跑哪个 `lab\<loader>` 工程、
@@ -87,11 +87,11 @@
 > `scenarios/smoke.json` **5/5 PASS**（`tmp/devrun-cross-split`）。
 >
 > **2026-10-20 02:25 增补（四类 mod 全齐；反向跨族也通了；连不上先看服务端日志）**：新增
-> `lab/fixture-server/`（Fabric，3.1 KB，`"environment": "server"`、只有 server 入口）——「任意一端即可」的
-> 服务端那一极。`scenarios/fixture-server-only.json`（4 步：服务端 `/mods` contains、客户端 notContains、
+> `lab/fixtures/fixture-server/`（Fabric，3.1 KB，`"environment": "server"`、只有 server 入口）——「任意一端即可」的
+> 服务端那一极。`scenarios/fixtures/fixture-server-only.json`（4 步：服务端 `/mods` contains、客户端 notContains、
 > 服务端 `joined (server-only half)` / `tick probe alive (server-only)`）实测 **4/4 PASS**（`tmp/devrun-fix-server-only`）。
-> 至此四类 mod 的「装在哪一端」都有样本与断言：`lab/fixture`（两端都必须）、`lab/fixture-client`（只客户端）、
-> `lab/fixture-server`（只服务端）、真实 mod 的 `/mods` 双侧对照。
+> 至此四类 mod 的「装在哪一端」都有样本与断言：`lab/fixtures/fixture`（两端都必须）、`lab/fixtures/fixture-client`（只客户端）、
+> `lab/fixtures/fixture-server`（只服务端）、真实 mod 的 `/mods` 双侧对照。
 > 反向跨族也实测了：`instances/cross-cf.json`（`loader: forge` 的 `<MC_ROOT>\Server1` + `client.loader: fabric`
 > 的 `26.3-Fabric` 独立客户端）→ `scenarios/smoke.json` **5/5 PASS exit 0**（`tmp/devrun-cross-cf3`），
 > 运行期打印「客户端加载器：fabric（实例声明 fabric / 服务端 forge）」⇒ 两个方向的跨族都成立。
@@ -101,8 +101,8 @@
 > 服务端日志最后几条断开原因、并对白名单单独提示；反例实测（用户名 `intruder`）输出里直接带断开原因 +
 > 提示（`tmp/devrun-wl-probe`，exit 1）。教训：**「连不上」先看服务端日志，别先怀疑加载器**。
 >
-> **2026-10-20 02:55 增补（Forge/NeoForge 版的 fixture：只到「检测」）**：`lab/fixture-forge/`（产物
-> `mcdev_fixture-1.0.0.jar` 6,859 B）与 `lab/fixture-neoforge/`（6,819 B）补齐「两端都必须」样本的三加载器版，
+> **2026-10-20 02:55 增补（Forge/NeoForge 版的 fixture：只到「检测」）**：`lab/fixtures/fixture-forge/`（产物
+> `mcdev_fixture-1.0.0.jar` 6,859 B）与 `lab/fixtures/fixture-neoforge/`（6,819 B）补齐「两端都必须」样本的三加载器版，
 > **三个工程共用同一个 modId `mcdev_fixture` 与同一串日志文本**（`client sent hello` / `server got hello from` /
 > `client got ack` / `client missing for` / `server missing (no ack in`）⇒ 同一份场景与断言可跨加载器复用。
 > 差别只在加载器 API：Forge 是 EventBus 7（`RegisterCommandsEvent.BUS` / `TickEvent.ServerTickEvent.Post.BUS`，
@@ -113,17 +113,38 @@
 > → `POST /command {"cmd":"mcdevfixture"}` → `/log/tail` 含 `server got hello from`）：forge `tmp\detect-fixture-forge2`
 > **4/4 PASS exit 0**、neoforge `tmp\detect-fixture-neoforge` **4/4 PASS exit 0**，跑完 `install-mod -Remove` 卸干净。
 > **还没证**（别当已证）：客户端那一半没起客户端（`client sent hello` / `client got ack`、三条 `fixture-*` 场景、
-> 两条超时路径都只在 Fabric 上验过），Forge/NeoForge 的客户端分支目前只过编译。要补只需拿 `scenarios/fixture-both.json`
+> 两条超时路径都只在 Fabric 上验过），Forge/NeoForge 的客户端分支目前只过编译。要补只需拿 `scenarios/fixtures/fixture-both.json`
 > 在对应实例上跑一次，场景不用改。
 >
-> **2026-10-20 03:05 增补（上面「还没证」的那些，现在都有证据了）**：Forge/NeoForge 的独立客户端真机跑通，
+> **2026-10-20 03:2x 增补（位置调整、提示化、打开已有世界会先弹确认框）**：三件事，前两件是需求方
+> 2026-10-20 对「套件定位」的直接裁定，第三件是搬家后跑出来的真故障。
+> - **样本与自检场景换位置**：`lab/fixture*` 五个工程 → `lab/fixtures/{fixture,fixture-client,fixture-server,fixture-forge,fixture-neoforge}`，
+>   `scenarios/fixture-*.json` 六个 → `scenarios/fixtures/`；新增 `lab/fixtures/README.md` 明说
+>   「这是套件自己的自测样本，不是模板/示例 mod，也不进发布产物」。理由：它们原来混在 `lab/` 顶层与
+>   `scenarios/` 普通场景里，容易被当成「给你用的」。
+> - **`devrun` 不再「替你下结论」**：白名单、停在界面层、两端加载器不一致、跑完的下一步，全部改成
+>   「提示（不参与判定）」，`results.json` 的 `nextStep` 带 `kind: "hint"` / `affectsVerdict: false`；
+>   `summary.md` 的段标题从「## 下一步」改成「## 提示（不参与判定）」。顺手修掉一条假提示：
+>   `side=client`（服务端不存在）时 summary 也会写「两端加载器不同」，现在两端都有值且真的不同才写。
+> - **新故障：打开已有单人世界会先弹 `BackupConfirmScreen`**（26.3 的行为；新建世界不弹）。搬家后
+>   `devrun-matrix` 首跑 case2 4 FAIL，`/status` 停在 `screen=BackupConfirmScreen` —— 世界已经开起来了，
+>   人却被「备份再进 / 跳过直接进」挡在门外。修法是给 `/world/singleplayer` 加 `backup=ask|skip|do`
+>   （默认 `ask` 什么都不点：「要不要备份」是使用者的选择，套件不替他决定），回包多 `backup` / `backupAction`。
+>   `SKIP_AND_JOIN` 是 private 常量（javap 实测），所以「跳过」按排除法找那个 `Button`。
+>   两个自检场景（`scenarios/singleplayer.json`、`scenarios/fixtures/fixture-client-only.json`）显式写 `&backup=skip`。
+> - 实测：5 个 fixture 工程新路径下 `gradlew build` 全 exit 0（6,844 / 3,060 / 3,112 / 7,017 / 6,821 B）；
+>   三家探针重建 exit 0（fabric **130,898** / forge **127,061** / neoforge **130,646** B）；
+>   `devrun-matrix -Cases tmp\cases-relocated.json` → `tmp\matrix-relocated2` **2/2 全部符合预期 exit 0**
+>   （case1 5/5、case2 6/6，`world-create` 回 `"backup":"skip","backupAction":"skipped"`，`world-ready` 第 3 次命中）；
+>   `scenarios/singleplayer.json` → `tmp\devrun-sp-relocated` **5/5 PASS exit 0**。
+>> **2026-10-20 03:05 增补（上面「还没证」的那些，现在都有证据了）**：Forge/NeoForge 的独立客户端真机跑通，
 > 三条 `fixture-*` 场景各跑一遍（客户端 gamedir `tmp\client-forge-fixture` / `tmp\client-neoforge-fixture`，
 > 客户端版本 `26.3-Forge-test` / `26.3-NeoForge-test`）：
-> - 两端都装 `scenarios/fixture-both.json`：forge `tmp\detect-fix-forge2` **5/5 PASS exit 0**、
+> - 两端都装 `scenarios/fixtures/fixture-both.json`：forge `tmp\detect-fix-forge2` **5/5 PASS exit 0**、
 >   neoforge `tmp\detect-fix-neoforge2` **5/5 PASS exit 0**（`client sent hello` → `server got hello from` → `client got ack`）。
-> - 只装服务端 `scenarios/fixture-client-missing.json`：forge `tmp\detect-fix-forge-clientmissing` **4/4**、
+> - 只装服务端 `scenarios/fixtures/fixture-client-missing.json`：forge `tmp\detect-fix-forge-clientmissing` **4/4**、
 >   neoforge `tmp\detect-fix-neo-clientmissing` **4/4**（`server-reports-missing` 分别 3 / 4 次尝试后命中）。
-> - 只装客户端 `scenarios/fixture-server-missing.json`：forge `tmp\detect-fix-forge-servermissing` **5/5**、
+> - 只装客户端 `scenarios/fixtures/fixture-server-missing.json`：forge `tmp\detect-fix-forge-servermissing` **5/5**、
 >   neoforge `tmp\detect-fix-neo-servermissing` **5/5**（`client-reports-missing` 分别 9 / 8 次尝试后命中）。
 >
 > 过程中撞到三件事，都已修在公共面而不是样本里：①**Forge 26.3 的消息是两个事件** —— `ClientChatReceivedEvent`

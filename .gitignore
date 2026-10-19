@@ -13,6 +13,11 @@ lab/*/run/
 lab/cache/
 *.class
 
+# ---- 同一套规则对 lab/fixtures 下的样本工程再生效一遍（它们比骨架多一层目录）----
+lab/fixtures/*/.gradle/
+lab/fixtures/*/build/
+lab/fixtures/*/run/
+
 # ---- 发布产物（由 scripts/package.ps1 重新生成）----
 dist/
 

@@ -12,8 +12,10 @@ import com.sun.net.httpserver.HttpServer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.BackupConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -497,6 +499,60 @@ public final class ClientProbeServer {
      *
      * <p>返回后世界是异步加载的：用 {@code /status} 的 {@code inWorld} 轮询等它就绪。
      */
+    /**
+     * 打开「已有」世界时，26.3 会先弹 {@link BackupConfirmScreen}（备份再进 / 跳过直接进）。
+     * 这是**通用界面**（不是某个 mod 的特性），但「要不要备份」属于使用者的选择，所以默认
+     * {@code backup=ask} 什么都不点、只把当前界面报回去；要自动化的人显式传 {@code backup=skip}
+     * （跳过备份直接进）或 {@code backup=do}（真做一次备份）。
+     * 返回实际动作：no-screen / skipped / backed-up / still-blocked。
+     */
+    private static String waitBackupAndJoin(String policy) throws Exception {
+        long deadline = System.currentTimeMillis() + 15000L;
+        while (System.currentTimeMillis() < deadline) {
+            String clicked = onClient(() -> {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.level != null) {
+                    return "world-ready";
+                }
+                Screen s = mc.gui.screen();
+                if (!(s instanceof BackupConfirmScreen)) {
+                    return null;
+                }
+                // 只有 BACKUP_AND_JOIN 是 public 常量；SKIP_AND_JOIN 是 private（javap 实测），
+                // 所以「跳过」这一支按排除法找：BackupConfirmScreen 上除「备份」之外的那个按钮就是它。
+                String backupLabel = BackupConfirmScreen.BACKUP_AND_JOIN.getString();
+                for (GuiEventListener child : s.children()) {
+                    if (child instanceof Button btn && btn.getMessage() != null) {
+                        boolean isBackupButton = backupLabel.equals(btn.getMessage().getString());
+                        boolean wanted = "skip".equals(policy) ? !isBackupButton : isBackupButton;
+                        if (!wanted) {
+                            continue;
+                        }
+                        double cx = btn.getX() + btn.getWidth() / 2.0;
+                        double cy = btn.getY() + btn.getHeight() / 2.0;
+                        s.mouseMoved(cx, cy);
+                        btn.onClick(new MouseButtonEvent(cx, cy, new MouseButtonInfo(0, 0)), false);
+                        return btn.getMessage().getString();
+                    }
+                }
+                return null;
+            });
+            if ("world-ready".equals(clicked)) {
+                return "no-screen";
+            }
+            if (clicked != null) {
+                return "skip".equals(policy) ? "skipped" : "backed-up";
+            }
+            try {
+                Thread.sleep(300L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return "still-blocked";
+    }
+
     private static void handleWorldSingleplayer(HttpExchange ex) throws IOException {
         if (!authorized(ex)) {
             return;
@@ -520,6 +576,11 @@ public final class ClientProbeServer {
             };
             boolean allowCommands = !"false".equalsIgnoreCase(strQuery(ex, "allowCommands", "true"));
             boolean reuse = "true".equalsIgnoreCase(strQuery(ex, "reuse", "false"));
+            // 打开已有世界时会先弹 BackupConfirmScreen。要不要备份是使用者的决定，默认不碰。
+            String backup = strQuery(ex, "backup", "ask").toLowerCase(Locale.ROOT);
+            if (!backup.equals("ask") && !backup.equals("skip") && !backup.equals("do")) {
+                throw new IllegalArgumentException("backup must be 'ask', 'skip' or 'do', got '" + backup + "'");
+            }
             String seedRaw = strQuery(ex, "seed", "");
             boolean hasSeed = seedRaw != null && !seedRaw.isEmpty();
             long seed = 0L;
@@ -582,8 +643,17 @@ public final class ClientProbeServer {
                 d.put("allowCommands", allowCommands);
                 d.put("seed", options == null ? null : options.seed());
                 d.put("worldDir", storage.getLevelPath(levelId).toString());
+                d.put("backup", backup);
                 return d;
             });
+            // 只有「打开已有世界 + 调用方明确要求」时才去处理备份确认界面；
+            // 新建世界不会弹这个界面，那就别白等。
+            boolean openedExisting = Boolean.TRUE.equals(data.get("openedExisting"));
+            if (openedExisting && !"ask".equals(backup)) {
+                data.put("backupAction", waitBackupAndJoin(backup));
+            } else {
+                data.put("backupAction", "ask");
+            }
             ok(ex, data);
         } catch (IllegalStateException e) {
             error(ex, 409, "world/singleplayer failed: " + e.getMessage());
