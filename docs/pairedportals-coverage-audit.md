@@ -145,8 +145,15 @@ PairedPortals 是纯服务端 mod（`fabric.mod.json` 只有 `main` 入口），
 | `server-only` 场景在「双端实例」上 | 同上 | 1 条 FAIL：`loud-failure-no-player` 期望 404 `PLAYER_NOT_FOUND`，实得 200 —— **不是 bug**：`server-only.json` 是给 `side=server` 实例用的契约用例，双端实例有玩家在线时必然 200。写 PairedPortals 场景时别复用这条 |
 | 新能力的自检 | `devrun -Instance <fabric\|forge\|neoforge> -Scenario scenarios\capabilities.json` | ✅ **三家各 12/12 PASS**：下界 `forceload`+`setblock`+`/world/block?dim=` 读 stone → `/world/break?dim=` 真拆（`removed: true`）→ 读 air → 未知维度 400；`say` 之后客户端 `/chat/tail` 用 `retry` 读到聊天（`actionbarSource: by-name`），`title … actionbar` 之后读到 `probe-actionbar-ok`；服务端 `/log/tail` 用 `expect.text` 断言到同一行 |
 
-## 附：下一步第一刀（建议）
+## 附：这次审计留下了什么
 
-G1/G3/G4/G6 齐了，剩下就是写场景：一个 `scenarios/pairedportals-core.json` —— 砌框 → 放牌写字 → 点火 → 断言门洞方块 + `list` 头行 + `info` 的 `state: PENDING` → 第二扇同文字门 → `state: BOUND` → 实体进门 → `travel:` 行。这一条跑通，就证明「整条自动化链路对第三方 mod 成立」，剩下的功能是按同一模板复制。
+G1/G3/G4/G6 补齐之后，照这份矩阵写了一份一次性场景（砌框 → 放牌写字 → 点火 → 断言门洞方块 + `list`
+头行 + `info` 的 `state: PENDING` → 第二扇同文字门 → `state: BOUND` → 实体进门 → `travel:` 行 →
+拆一端 → 双方门洞清空 + `went down with its twin`），在 Fabric 上 **31/31 PASS**，证明整条链路对
+第三方服务端 mod 成立。
+
+那份场景**没有进仓库**：本套件只提供能力（端点、场景 DSL、重试与断言、取证），**不提供「该测什么」的
+答案**，也不替代人自己上手看音效、紫屏、F3 读数这些没有数据通道的东西。要测自己的 mod，照这份矩阵的
+「驱动手段」一列写你自己的步骤即可。
 
 写的时候用新能力：等状态用 `retry`，文案用 `expect.contains: {"data.actionbar": …}`，日志用 `expect.text: [...]`；跨维度一侧的方块读写带 `dim` 参数。

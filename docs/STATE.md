@@ -46,10 +46,9 @@ pwsh -NoProfile -File scripts\setup-wizard.ps1       # 交互式：挑加载器/
 
 1. **独立客户端实例形态**（唯一挡在「可分发给别人」前面的东西）：HMCL profile / 套件自带手写启动壳 /
    官方启动器 profile —— 三选一，我还没替用户定。定完把 `client.mode=external` 这条路真机跑一次。
-2. **PairedPortals 门框贴牌用例**（用户要求「记下来之后要测」，已写在下方待测节）：
-   门框内贴牌 + 写字，唯一没验证过的环节是「手放牌的落点」。审计与缺口见
-   [pairedportals-coverage-audit.md](pairedportals-coverage-audit.md)（G1/G3/G4/G6 已补齐，可直接写
-   `scenarios/pairedportals-core.json`）。
+2. **PairedPortals 门框贴牌用例**：已作为**一次具体审计 + 一份一次性场景**做完（Fabric 31/31 PASS），
+   结论见 [pairedportals-coverage-audit.md](pairedportals-coverage-audit.md)。那个场景**故意不入库**
+   （`tmp/case-pairedportals-core.json`）：套件只提供能力，不带针对具体 mod 的用例。
 3. **P5 发布渠道**：GitHub release（单套件 zip）还是私有分发；版本策略（现在只有 `1.0.0`）。
 4. **可选**：FakePlayer（无客户端 CI 才需要，当前已证明不需要）、58 包覆盖 24/58 要不要再扩。
 
