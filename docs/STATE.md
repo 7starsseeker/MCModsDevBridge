@@ -414,7 +414,7 @@ pwsh -NoProfile -File .\scripts\install.ps1 -Loader fabric -Target "<MC_ROOT>\Se
 `scripts/install-dsh-plugin.ps1` · `scripts/devrun.ps1` + `scenarios/` · `dsh-plugin/mcdev-devrun/` ·
 `README.md` / `LICENSE` / `SHA256SUMS.txt` / `manifest.json`（`kind:"suite"`, `entrypoint:"scripts/install.ps1"`）。
 
-核对链：构建 → 零警告 → 类数基线（19/19/21）→ jar 内元数据 → zip 必需文件 → 逐文件校验和。
+核对链：构建 → 零警告 → 类数基线（23/23/25）→ jar 内元数据 → zip 必需文件 → 逐文件校验和。
 **不做「一个 jar 通吃三家」**：三家入口与元数据文件由加载器各自解析，合并只能靠 jar-in-jar/loader 探测，收益为零风险不小。
 旧 `dist/mcdev-probe-1.0.0/`（v1 扁平三 jar）不再是发布物，只留作对比证据。
 **先读**：feasibility §7.5（58 个包的权威口径）、architecture §8（动作层三段式前置校验）。
@@ -476,9 +476,13 @@ Gradle（同上或 `systemProp.*`）、外部客户端实例（启动器 JVM 参
 
 | 项目 | 目录 | 产物 | 首次构建基线 | 增量构建 | 状态 |
 |---|---|---|---|---|---|
-| Fabric | `lab/fabric` | `mcdev_probe-1.0.0.jar` **115,935 B**（19 类） | 3m 13s | 2–4s（`compileClientJava` ~7s） | **服务端 + 客户端 + 动作层 + 服务端后端 + 客户端套件 25/25** |
-| Forge | `lab/forge` | `mcdev_probe-1.0.0.jar` **112,184 B**（19 类） | 4m 44s（mavenizer 4m 09s） | 3s | 服务端 + 9 动作 + **客户端入口（runClient 25/25）** |
-| NeoForge | `lab/neoforge` | `mcdev_probe-1.0.0.jar` **115,739 B**（21 类） | 4m 53s（NeoForm 162s） | 2s | 服务端 + 9 动作 + **客户端入口（runClient 25/25）** |
+| Fabric | `lab/fabric` | `mcdev_probe-1.0.0.jar` **129,923 B**（23 类） | 3m 13s | 2–4s（`compileClientJava` ~7s） | **服务端 + 客户端 + 动作层 + 服务端后端 + 客户端套件 25/25** |
+| Forge | `lab/forge` | `mcdev_probe-1.0.0.jar` **126,086 B**（23 类） | 4m 44s（mavenizer 4m 09s） | 3s | 服务端 + 9 动作 + **客户端入口（runClient 25/25）** |
+| NeoForge | `lab/neoforge` | `mcdev_probe-1.0.0.jar` **129,671 B**（25 类） | 4m 53s（NeoForm 162s） | 2s | 服务端 + 9 动作 + **客户端入口（runClient 25/25）** |
+
+> 类数比首版（19/19/21）多 4 个，是 `/mods` 与配置文件读取带进来的：
+> `ModCatalog` + `ModCatalog$Entry`、`ProbeConfig` + `ProbeConfig$Cached`。三家同步 +4，
+> `scripts/package.ps1` 的 `$ExpectClasses` 已对齐 23/23/25。
 
 > Forge 的增量构建有个坑（记录 §12.5）：`clean build` 一次跑完时 jar 可能只含**本轮改过的类**
 > （实测 12,791 B / 3 类，但 `BUILD SUCCESSFUL`）。用 `--rerun-tasks`，并且每次构建后核对类数：

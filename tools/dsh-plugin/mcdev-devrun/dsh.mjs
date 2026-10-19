@@ -28,11 +28,15 @@ import { spawn } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { registerSkills } from './skills-provider.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 export const name = 'mcdev-devrun'
-/** 只用到 `tools` 服务；不碰 shell / 编码 / 配置。 */
+/**
+ * `tools` 常驻；`skills` 是可选的（在 apply 里用 `ctx.inject(['skills'], ...)` 取，缺席就只是没有知识层）。
+ * 不碰 shell / 编码 / 配置。
+ */
 export const inject = ['tools']
 
 const log = (...a) => console.log('[mcdev-devrun]', ...a)
@@ -153,6 +157,10 @@ const asText = {
 }
 
 export function apply(ctx) {
+  // 知识层：把「只有真机才知道」的开发知识注册成 skill（skills/ 目录，见 skills-provider.mjs）。
+  // 用 ctx.inject 而不是写进顶层 inject —— skills 服务缺席时只是没有知识层，工具照常注册。
+  ctx.inject(['skills'], (skillCtx) => registerSkills(skillCtx))
+
   ctx.inject(['tools'], (toolCtx) => {
     toolCtx.tools.register({
       ...asText,

@@ -58,7 +58,7 @@ $javaProxy = Get-JavaProxyOptions (Resolve-ProxyUrl -Explicit $Proxy -NoProxy:$N
 if ($javaProxy) { $env:JAVA_TOOL_OPTIONS = $javaProxy }
 
 # 类数基线：接了客户端源集之后每家 +4（见 STATE.md）
-$ExpectClasses = @{ fabric = 19; forge = 19; neoforge = 21 }
+$ExpectClasses = @{ fabric = 23; forge = 23; neoforge = 25 }  # 首版 19/19/21；+ModCatalog(+Entry)、ProbeConfig(+Cached)
 $ExpectActions = @{ fabric = 9; forge = 7; neoforge = 7 }   # action 包下的 .class（含内部类）
 
 function Get-Version {
@@ -249,6 +249,28 @@ $required = @(
     "scripts/install.ps1", "scripts/install-dsh-plugin.ps1", "scripts/devrun.ps1",
     'README.md', 'manifest.json', 'SHA256SUMS.txt', 'LICENSE',
     'dsh-plugin/mcdev-devrun/dsh.mjs',
+    # 知识层：provider + 11 个 skill + 5 份 references。逐条列全，少一个就打包失败
+    # （只抽检一个 SKILL.md 的话，将来漏掉某个 skill 不会报错 —— 那等于没有断言）。
+    # 加/删 skill 时这里与 tools/dsh-plugin/mcdev-devrun/skills-provider.mjs 的 SKILLS 表要同步，
+    # selftest-skills.mjs 会双向核对登记表与 skills/ 目录。
+    'dsh-plugin/mcdev-devrun/skills-provider.mjs',
+    'dsh-plugin/mcdev-devrun/selftest-skills.mjs',
+    'dsh-plugin/mcdev-devrun/skills/mcdev-probe-protocol/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mcdev-probe-protocol/references/endpoints.md',
+    'dsh-plugin/mcdev-devrun/skills/mcdev-probe-protocol/references/ui-and-screenshots.md',
+    'dsh-plugin/mcdev-devrun/skills/mcdev-devrun/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mcdev-devrun/references/scenario-dsl.md',
+    'dsh-plugin/mcdev-devrun/skills/mcdev-devrun/references/scenario-cookbook.md',
+    'dsh-plugin/mcdev-devrun/skills/mcdev-devrun/references/troubleshooting.md',
+    'dsh-plugin/mcdev-devrun/skills/mc26-multiloader-traps/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mc-verification-design/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mc26-mod-skeleton/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mcdev-fixture-design/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mc-world-assertions/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mc-content-data-verification/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mc-multiplayer-verification/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mc-crash-diagnosis/SKILL.md',
+    'dsh-plugin/mcdev-devrun/skills/mcdev-instance-setup/SKILL.md',
     'scenarios/smoke.json', 'scenarios/actions.json'
 ) + @($rows | ForEach-Object { "mods/mcdev-probe-$version-$($_.family).jar" })
 
