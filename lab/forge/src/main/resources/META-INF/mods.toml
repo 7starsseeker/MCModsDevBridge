@@ -12,7 +12,7 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="mcdev_probe"
-version="1.0.0"
+version="${mod_version}"
 displayName="MCDev Probe"
 #updateJSONURL="https://example.com/updates.json" #optional
 #displayURL="https://example.com/" #optional

@@ -107,9 +107,14 @@ foreach ($family in 'fabric', 'forge', 'neoforge') {
                 throw "$family 有 $warnings 条 javac 警告（零警告是验收项）"
             }
         }
-        $jar = Get-ChildItem (Join-Path $dir 'build\libs') -Filter '*.jar' |
-            Where-Object { $_.Name -notlike '*sources*' } | Select-Object -First 1
-        if (-not $jar) { throw "$family 的 build\libs 里没有 jar" }
+        # 只认「本版本的那一个 jar」：build\libs 里常留着上一次版本的产物，
+        # 按名字抓第一个会挑到旧的（实测把 1.0.0 的 jar 打进了 1.0.2 的套件）。
+        $wantJar = Join-Path $dir "build\libs\mcdev_probe-$version.jar"
+        if (-not (Test-Path -LiteralPath $wantJar)) {
+            throw ("{0} 的 build\libs 里没有 mcdev_probe-{1}.jar（现有：{2}）" -f $family, $version,
+                ((Get-ChildItem (Join-Path $dir 'build\libs') -Filter '*.jar' | ForEach-Object Name) -join ', '))
+        }
+        $jar = Get-Item -LiteralPath $wantJar
         $stats = Get-JarStats $jar.FullName
         if ($stats.classes -ne $ExpectClasses[$family]) {
             throw ("{0} 的类数 {1} ≠ 基线 {2}（增量构建漏类？用 --rerun-tasks）" -f $family, $stats.classes, $ExpectClasses[$family])

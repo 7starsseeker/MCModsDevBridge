@@ -9,7 +9,7 @@ plugins {
     id 'net.minecraftforge.gradle' version '[7.0.17,8)'
 }
 
-version = '1.0.0'
+version = '1.0.2'
 group = 'com.mcdev.probe'
 
 // P4 步骤 0：与另两家统一产物名；modId 见 META-INF/mods.toml
@@ -83,4 +83,9 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs << '-Xlint:deprecation'
     options.deprecation = true
 }
-
+// mods.toml 里的 ${mod_version} 用项目版本展开（写死版本号会在下次改版本时悄悄漂移）
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [ mod_version: project.version ]
+    inputs.properties(replaceProperties)
+    filesMatching(['META-INF/mods.toml']) { expand replaceProperties }
+}
