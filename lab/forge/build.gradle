@@ -9,7 +9,7 @@ plugins {
     id 'net.minecraftforge.gradle' version '[7.0.17,8)'
 }
 
-version = '1.0.2'
+version = '1.0.3'
 group = 'com.mcdev.probe'
 
 // P4 步骤 0：与另两家统一产物名；modId 见 META-INF/mods.toml

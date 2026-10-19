@@ -1,6 +1,6 @@
 {
   "name": "mcmodsdevbridge",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Minecraft 26.3 mod development bridge for DeepSeek Harness: starts a real dedicated server and a real client, connects and ops, runs a scenario JSON of probe HTTP calls, collects evidence and tears everything down, on Fabric / Forge / NeoForge. Ships 11 skills covering the probe protocol, the scenario DSL, fixtures, instance setup and the traps found on 26.3.",
   "keywords": [
     "deepseek-harness",
