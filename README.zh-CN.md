@@ -283,6 +283,18 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\single
   ② **首轮红了** —— `devrun -KeepRunning` 把服务端和客户端留在原地，再用 computer use 进去截图、看可疑点、读现场状态，
   比你靠日志猜要快。
 
+## 发布
+
+版本号只存在于 `package.json`，发布是自动的：
+
+1. 改 `package.json` 的 `version`
+2. `git tag -a vX.Y.Z -m "vX.Y.Z"`，然后 `git push origin vX.Y.Z`
+3. `.github/workflows/publish.yml` 先校验「tag 与版本一致」，跑
+   `node tools/dsh-plugin/selftest.mjs`，再通过 npm **Trusted Publishing**（OIDC，无 token / 无 secret）
+   执行 `npm publish --provenance --access public`
+
+tag 和 `package.json` 对不上时，任务会在任何东西进 registry 之前失败。
+
 ## 许可
 
 原创代码与文档以 **Apache License 2.0** 发布（见 [LICENSE](LICENSE) / [NOTICE](NOTICE)）；派生与骨架部分保留各自许可证，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

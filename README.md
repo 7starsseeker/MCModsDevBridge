@@ -244,6 +244,18 @@ This suite is the first-round automated test for DSH: it finishes the part that 
 - **What it costs**: an order of magnitude slower than the probe; a Minecraft 3D window has essentially no UI automation tree, so it works from pixels and a vision model; move the window and every coordinate is invalid.
   So it **is not part of the judgement chain**. It is worth using in exactly two moments: (1) the first round is green and you want one more pass along the real human path, leaving a few images for people to look at; (2) **the first round is red** — `devrun -KeepRunning` leaves the server and client running, then computer use can go in, take screenshots, inspect suspicious spots and read live state, which beats guessing from logs.
 
+## Releasing
+
+The version lives in `package.json`; publishing is automated:
+
+1. bump `version` in `package.json`
+2. `git tag -a vX.Y.Z -m "vX.Y.Z"` then `git push origin vX.Y.Z`
+3. `.github/workflows/publish.yml` verifies the tag matches the version, runs
+   `node tools/dsh-plugin/selftest.mjs`, then publishes with
+   `npm publish --provenance --access public` through npm **Trusted Publishing** (OIDC — no tokens, no secrets)
+
+A tag that does not match `package.json` fails the job before anything reaches the registry.
+
 ## License
 
 Original code and documentation are released under the **Apache License 2.0** (see [LICENSE](LICENSE) / [NOTICE](NOTICE)); derived parts and skeletons keep their own licenses — see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
