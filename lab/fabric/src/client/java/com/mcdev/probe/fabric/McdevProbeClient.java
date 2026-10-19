@@ -1,10 +1,12 @@
 package com.mcdev.probe.fabric;
 
 import com.mcdev.probe.ClientProbeServer;
+import com.mcdev.probe.ModCatalog;
 import com.mcdev.probe.ProbeConfig;
 import com.mcdev.probe.ProbeLogs;
 
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 
 import java.nio.file.Path;
@@ -27,7 +29,14 @@ public final class McdevProbeClient implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
             // 端口/口令：config/mcdev-probe.properties 优先于内置默认，-Dmcdev.probe.* 再覆盖它。
             Path dir = client.gameDirectory.toPath();
-            ClientProbeServer.setLoader("fabric");
+            // 已加载 mod 清单：/mods 的权威来源（FabricLoader 是加载器 API，只出现在 platform 包内）。
+        ModCatalog.setProvider(() -> FabricLoader.getInstance().getAllMods().stream()
+                .map(c -> new ModCatalog.Entry(
+                        c.getMetadata().getId(),
+                        c.getMetadata().getVersion().getFriendlyString(),
+                        c.getMetadata().getName()))
+                .toList());
+        ClientProbeServer.setLoader("fabric");
             ClientProbeServer.start(
                     ProbeConfig.getInt(dir, "mcdev.probe.client.port", DEFAULT_CLIENT_PORT),
                     ProbeConfig.get(dir, "mcdev.probe.token", DEFAULT_TOKEN));

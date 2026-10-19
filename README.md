@@ -130,8 +130,21 @@ pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端
 | `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities`；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
 | `tools/dsh-plugin/` | DSH 插件（`mcdev_devrun` / `mcdev_scenarios`） |
 | `docs/` | 可行性评估、逐阶段移植记录、部署拓扑、状态总览 |
+| `docs/examples/` | **参考资料**，不是能力清单：拿一个具体 mod 演示「功能 → 可断言步骤 → 截图证据」怎么写（见下节） |
 
 先读 [docs/STATE.md](docs/STATE.md) 了解当前进度；[docs/architecture.md](docs/architecture.md) 讲整体设计；[docs/deployment-topology.md](docs/deployment-topology.md) 讲实例与端口分配。
+
+## 参考资料（不是套件能力）
+
+[docs/examples/pairedportals/](docs/examples/pairedportals/) 是一份**参考材料**：它拿一个具体 mod（告示牌配对的自定义传送门）
+演示「把功能翻译成可自动断言的步骤」时**可以怎么想** —— 怎么分组、断言落在哪、时序怎么等、哪些必须人眼。
+用例每步都有 `note` 说明在验什么。
+
+它**不是**套件的一部分，也**不会**被 `devrun` 默认执行：套件只提供通用能力，不规定你测什么。
+给别的 mod 写用例前，先跟使用者确认「有哪些功能要测、成功后可观测的变化是什么、哪些只能人眼看」，再写步骤。
+
+判定**只来自探针/日志/API**（方块状态、命令回执、mod 日志、客户端坐标等）。这套工具做的是首轮判断，
+不替代人上手测：音效、动画、观感这类东西没有数据通道，交给人。
 
 ## 许可
 

@@ -3,6 +3,7 @@ package com.mcdev.probe;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mcdev.probe.ModCatalog;
 import com.mcdev.probe.action.ActionException;
 import com.mcdev.probe.action.ActionRequest;
 import com.mcdev.probe.action.ClientActionBackend;
@@ -106,6 +107,7 @@ public final class ClientProbeServer {
             route("/quit", ClientProbeServer::handleQuit, "core");
             // ---- P4 第二批：聊天与特殊方块 UI（架构 §8.1 的 out-of-scope 补回）----
             route("/chat/send", ClientProbeServer::handleChatSend, "chat");
+        route("/mods", ClientProbeServer::handleMods, "core");
             route("/chat/tail", ClientProbeServer::handleChatTail, "chat_read");
             route("/block/sign", ClientProbeServer::handleBlockSign, "block_extra");
             route("/block/sign/edit", ClientProbeServer::handleBlockSignEdit, "block_extra");
@@ -214,6 +216,17 @@ public final class ClientProbeServer {
                 d.put("height", mc.getWindow().getGuiScaledHeight());
                 d.put("player", mc.player == null ? null : mc.player.getName().getString());
                 d.put("playerPos", mc.player == null ? null : mc.player.position().toString());
+                // 数值坐标：playerPos 是 Vec3.toString()，形如 "(53.5, 100.0, 8.0)"，
+                // 按子串断言它得猜格式；分开给三个数，场景里就能直接断言 "playerPosX": "58.5"。
+                if (mc.player != null) {
+                    d.put("playerPosX", round2(mc.player.getX()));
+                    d.put("playerPosY", round2(mc.player.getY()));
+                    d.put("playerPosZ", round2(mc.player.getZ()));
+                } else {
+                    d.put("playerPosX", null);
+                    d.put("playerPosY", null);
+                    d.put("playerPosZ", null);
+                }
                 d.put("playerRot", mc.player == null ? null
                         : mc.player.getYRot() + "," + mc.player.getXRot());
                 d.put("gamemode", mc.gameMode == null ? null : String.valueOf(mc.gameMode.getPlayerMode()));
@@ -802,6 +815,10 @@ public final class ClientProbeServer {
         return m;
     }
 
+    /** 保留两位小数：坐标断言不该受浮点尾巴影响。 */
+    private static double round2(double v) {
+        return Math.round(v * 100.0) / 100.0;
+    }
     private static void handleScreenshot(HttpExchange ex) throws IOException {
         if (!authorized(ex)) {
             return;
@@ -834,6 +851,19 @@ public final class ClientProbeServer {
                 }
                 Thread.sleep(50);
             }
+            // 截图文件是异步落盘的：刚拿到文件后有一小段时间 length() 还是 0（实测 01-in-world 抓到 0 字节）。
+            // 等到「非空且大小连续两次相同」再返回，否则取证目录里会留下空图——空图比没图更糟（看起来像证据）。
+            if (newest != null) {
+                long last = -1L;
+                for (int i = 0; i < 60; i++) {
+                    long len = newest.length();
+                    if (len > 0 && len == last) {
+                        break;
+                    }
+                    last = len;
+                    Thread.sleep(50);
+                }
+            }
             data.put("file", newest == null ? null : newest.getName());
             data.put("path", newest == null ? null : newest.getAbsolutePath());
             data.put("exists", newest != null);
@@ -865,6 +895,32 @@ public final class ClientProbeServer {
      * 注意：聊天有服务端限速（默认 20 秒内的 spam 阈值），连续发会被静默丢弃 —— 这是
      * 服务端行为，不在这里兜底。</p>
      */
+    /** 已加载 mod 清单；{@code source=loader} 表示真的从加载器读到了，{@code none} 表示没注册 provider。 */
+    private static void handleMods(HttpExchange ex) throws IOException {
+        if (!authorized(ex)) {
+            return;
+        }
+        List<ModCatalog.Entry> mods = ModCatalog.list();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("side", "client");
+        data.put("loader", loader);
+        data.put("source", ModCatalog.hasProvider() ? "loader" : "none");
+        data.put("count", mods.size());
+        List<Map<String, Object>> rows = new ArrayList<>();
+        List<String> ids = new ArrayList<>();
+        for (ModCatalog.Entry m : mods) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", m.id());
+            row.put("version", m.version());
+            row.put("name", m.name());
+            rows.add(row);
+            ids.add(m.id());
+        }
+        data.put("mods", rows);
+        // 一行 id 便于 expect.contains 断言，不必数数组下标。
+        data.put("ids", String.join(",", ids));
+        ok(ex, data);
+    }
     private static void handleChatSend(HttpExchange ex) throws IOException {
         if (!authorized(ex)) {
             return;

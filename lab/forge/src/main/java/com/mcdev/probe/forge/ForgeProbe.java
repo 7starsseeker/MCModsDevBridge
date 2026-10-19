@@ -1,5 +1,6 @@
 package com.mcdev.probe.forge;
 
+import com.mcdev.probe.ModCatalog;
 import com.mcdev.probe.ProbeCommands;
 import com.mcdev.probe.ProbeConfig;
 import com.mcdev.probe.ProbeLog;
@@ -14,6 +15,7 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 
 import java.nio.file.Path;
@@ -63,6 +65,13 @@ public final class ForgeProbe {
         RunRecorder.start(server);
         // 端口/口令：config/mcdev-probe.properties 优先于内置默认，-Dmcdev.probe.* 再覆盖它。
         Path dir = server.getServerDirectory();
+        // 已加载 mod 清单：/mods 的权威来源（ModList 是加载器 API，只出现在 platform 包内）。
+        ModCatalog.setProvider(() -> ModList.getMods().stream()
+                .map(m -> new ModCatalog.Entry(
+                        m.getModId(),
+                        m.getVersion().toString(),
+                        m.getDisplayName()))
+                .toList());
         ProbeServer.setLoader("forge");
         ProbeServer.start(
                 server,

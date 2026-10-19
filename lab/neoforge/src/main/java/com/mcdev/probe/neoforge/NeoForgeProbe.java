@@ -1,5 +1,6 @@
 package com.mcdev.probe.neoforge;
 
+import com.mcdev.probe.ModCatalog;
 import com.mcdev.probe.ProbeCommands;
 import com.mcdev.probe.ProbeConfig;
 import com.mcdev.probe.ProbeLog;
@@ -12,6 +13,7 @@ import net.minecraft.server.MinecraftServer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -64,6 +66,13 @@ public final class NeoForgeProbe {
         RunRecorder.start(server);
         // 端口/口令：config/mcdev-probe.properties 优先于内置默认，-Dmcdev.probe.* 再覆盖它。
         Path dir = server.getServerDirectory();
+        // 已加载 mod 清单：/mods 的权威来源（ModList 是加载器 API，只出现在 platform 包内）。
+        ModCatalog.setProvider(() -> ModList.get().getMods().stream()
+                .map(m -> new ModCatalog.Entry(
+                        m.getModId(),
+                        m.getVersion().toString(),
+                        m.getDisplayName()))
+                .toList());
         ProbeServer.setLoader("neoforge");
         ProbeServer.start(
                 server,

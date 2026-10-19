@@ -1,5 +1,6 @@
 package com.mcdev.probe.fabric;
 
+import com.mcdev.probe.ModCatalog;
 import com.mcdev.probe.ProbeCommands;
 import com.mcdev.probe.ProbeConfig;
 import com.mcdev.probe.ProbeLog;
@@ -8,6 +9,7 @@ import com.mcdev.probe.ProbeServer;
 import com.mcdev.probe.RunRecorder;
 import com.mcdev.probe.TickControl;
 import net.fabricmc.api.DedicatedServerModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.server.MinecraftServer;
@@ -45,6 +47,13 @@ public final class McdevProbeFabric implements DedicatedServerModInitializer {
         RunRecorder.start(server);
         // 端口/口令：config/mcdev-probe.properties 优先于内置默认，-Dmcdev.probe.* 再覆盖它。
         Path dir = server.getServerDirectory();
+        // 已加载 mod 清单：/mods 的权威来源（FabricLoader 是加载器 API，只出现在 platform 包内）。
+        ModCatalog.setProvider(() -> FabricLoader.getInstance().getAllMods().stream()
+                .map(c -> new ModCatalog.Entry(
+                        c.getMetadata().getId(),
+                        c.getMetadata().getVersion().getFriendlyString(),
+                        c.getMetadata().getName()))
+                .toList());
         ProbeServer.setLoader("fabric");
         ProbeServer.start(
                 server,

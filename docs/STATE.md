@@ -23,6 +23,16 @@
 > 实测证据：`tmp/devrun-standalone`（独立客户端 + 服务端，capabilities 12/12 PASS，客户端 11 s 到探针）、
 > `tmp/devrun-firstrun`（首次启动自动关掉 `AccessibilityOnboardingScreen`，`closed=True`，随后进 TitleScreen）、
 > `tmp/devrun-client-only` 与 `tmp/devrun-wiz-client`（`side=client`，2/2 PASS，退出码 0）。
+>
+> **2026-10-20 00:55 增补（判定只靠探针/日志；截图不进判定链）**：两端探针加了 `GET /mods`（`id/version/name`，
+> 另给一行 `ids` 便于子串断言），客户端 `/status` 加了数值坐标 `playerPosX/Y/Z`（原来只有 `Vec3.toString()`
+> 的 `playerPos`，按子串断言要猜格式）。`scripts/devrun.ps1` 的步骤支持 `"note": "这条在验什么"`（进
+> `results.json` 与 `summary.md` 的「说明」列，不参与判定）。
+> **截图不作为判定判据**：曾实现「步骤 opt-in 截图 + 失败自动拍 + `shots\` 目录」，按需求方口径**已撤销**
+> —— 什么时机截、图里算什么，跟具体 mod 强相关，硬塞进编排只会「拍一堆图没人看」。探针仍有 `GET /screenshot`
+> （要留人眼证据可自己调），但不在判定链里；音效/动画/观感等没有数据通道的东西交给人测。
+> 参考用例：[docs/examples/pairedportals/](examples/pairedportals/)（43 步、每步 `note`，Fabric 43/43 PASS），
+> 演示「功能 → 可断言步骤」的写法思路，**不进能力清单、不随套件默认执行**。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
 

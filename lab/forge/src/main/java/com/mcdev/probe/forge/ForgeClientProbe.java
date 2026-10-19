@@ -1,12 +1,14 @@
 package com.mcdev.probe.forge;
 
 import com.mcdev.probe.ClientProbeServer;
+import com.mcdev.probe.ModCatalog;
 import com.mcdev.probe.ProbeConfig;
 import com.mcdev.probe.ProbeLog;
 import com.mcdev.probe.ProbeLogs;
 
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.fml.ModList;
 
 import java.nio.file.Path;
 
@@ -44,6 +46,13 @@ public final class ForgeClientProbe {
                 return;
             }
             started = true;
+            // 已加载 mod 清单：/mods 的权威来源（ModList 是加载器 API，只出现在 platform 包内）。
+            ModCatalog.setProvider(() -> ModList.getMods().stream()
+                    .map(m -> new ModCatalog.Entry(
+                            m.getModId(),
+                            m.getVersion().toString(),
+                            m.getDisplayName()))
+                    .toList());
             ClientProbeServer.setLoader("forge");
             // 端口/口令：config/mcdev-probe.properties 优先于内置默认，-Dmcdev.probe.* 再覆盖它。
             Path dir = Minecraft.getInstance().gameDirectory.toPath();

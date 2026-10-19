@@ -11,7 +11,7 @@
       3) 起客户端：写内层 ps1（JAVA_HOME/代理/-Dmcdev.probe.*），Start-Process 拉起 gradlew runClient
       4) 连接：POST /connect?host&port=...（注意 /connect 只认 query，不认 body），轮询 /status.player
       5) 操作：按 scenario json 逐条打端点，断言 status 与 json 路径
-      6) 取证 + 收尾：results.json + summary.md（含两侧日志尾巴），停客户端与服，检查端口释放
+      6) 取证 + 收尾：results.json + summary.md，停客户端与服，检查端口释放
 
     与 tmp\p4a-*.ps1 的关系：那些是逐个环节的手工脚本（也是本脚本的代码来源），本脚本把它们
     串成一条可复用流水线；两者并存，tmp 的保留作为排障工具。
@@ -39,8 +39,15 @@
         "retry": { "times": 20, "intervalMs": 250 }    最多发 20 次、间隔 250ms，任一次断言通过即停；
     waitMs 仍然只在**首次**尝试前生效（用于「上一步的副作用要等一下」）。
 
+    每步可写 `"note": "这条在验什么"`：只进 results.json 与 summary.md 的「说明」列，不影响判定，
+    是写给以后读取证的人（和写用例的人）看的。
+
+    判定只来自探针/日志/API 这些机器可读的证据。截图仍然是一个探针端点（`GET /screenshot`），
+    但**不进判定链**：什么时机该截、图里算什么对着，跟具体 mod 强相关，硬塞进编排只会得到
+    「拍了很多图但没人看」的结果。要留人眼证据就在人测那一步自己截。
+
 .PARAMETER Mods
-    额外要塞进测试服 mods/ 的被测 mod jar 路径（PairedPortals 那类）。会先按文件名去重再复制。
+    额外要塞进测试服 mods/ 的被测 mod jar 路径（可重复给多个）。会先按文件名去重再复制。
 
 .PARAMETER EvidenceDir
     取证输出目录，默认 tmp\devrun-<family>-<yyyyMMdd-HHmmss>。
@@ -641,7 +648,9 @@ try {
     $t0 = Get-Date
     Write-Host "  场景：$($sc.name)（$($sc.steps.Count) 条）"
 
+    $stepIndex = 0
     foreach ($step in $sc.steps) {
+        $stepIndex++
         $base = if ($step.target -eq 'server') { $ServerBase } else { $ClientBase }
         $method = if ($step.method) { $step.method } else { 'POST' }
         # {{player}} 占位符：玩家名每次启动都变（Fabric 是 PlayerNNN、Forge/NeoForge 是 Dev），
@@ -690,6 +699,7 @@ try {
                 request  = "$method $path"
                 status   = $r.Status
                 attempts = $attempts
+                note     = [string]$step.note
                 pass     = $pass
                 reason   = $reason
                 body     = $bodyText
@@ -737,11 +747,13 @@ try {
     $lines.Add("- 结论：**PASS=$passCount FAIL=$failCount total=$($Results.Count)**")
     $lines.Add('- 阶段耗时（秒）：' + (($PhaseTimes.GetEnumerator() | ForEach-Object { "$($_.Key)=$([math]::Round($_.Value,1))" }) -join ' / '))
     $lines.Add('')
-    $lines.Add('| 用例 | 目标 | 请求 | 状态 | 结论 | 理由 |')
-    $lines.Add('|---|---|---|---:|---|---|')
+    $lines.Add('| 用例 | 目标 | 请求 | 状态 | 结论 | 说明 | 理由 |')
+    $lines.Add('|---|---|---|---:|---|---|---|')
     foreach ($r in $Results) {
         $verdict = if ($r.pass) { 'PASS' } else { 'FAIL' }
-        $lines.Add("| $($r.id) | $($r.target) | ``$($r.request)`` | $($r.status) | $verdict | $($r.reason) |")
+        # 说明列来自场景里的 note 字段（给读结果的人看的），不参与判定。
+        $note = ([string]$r.note).Replace('|', '/')
+        $lines.Add("| $($r.id) | $($r.target) | ``$($r.request)`` | $($r.status) | $verdict | $note | $($r.reason) |")
     }
     $lines.Add('')
     $lines.Add('## 服务端 /status')

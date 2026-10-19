@@ -86,6 +86,7 @@ public final class ProbeServer {
         try {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
             route("/status", ProbeServer::handleStatus, "core");
+            route("/mods", ProbeServer::handleMods, "core");
             route("/log/tail", ProbeServer::handleLogTail, "core");
             route("/command", ProbeServer::handleCommand, "command");
             route("/world/block", ProbeServer::handleWorldBlock, "world");
@@ -180,6 +181,32 @@ public final class ProbeServer {
         ok(ex, data);
     }
 
+    /** 已加载 mod 清单：装没装上、卸没卸干净都要有硬证据，不靠日志里的 "Loading N mods"。 */
+    private static void handleMods(HttpExchange ex) throws IOException {
+        if (!authorized(ex)) {
+            return;
+        }
+        List<ModCatalog.Entry> mods = ModCatalog.list();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("side", "server");
+        data.put("loader", loader);
+        data.put("source", ModCatalog.hasProvider() ? "loader" : "none");
+        data.put("count", mods.size());
+        List<Map<String, Object>> rows = new ArrayList<>();
+        List<String> ids = new ArrayList<>();
+        for (ModCatalog.Entry m : mods) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", m.id());
+            row.put("version", m.version());
+            row.put("name", m.name());
+            rows.add(row);
+            ids.add(m.id());
+        }
+        data.put("mods", rows);
+        // 拼成一行便于场景用 expect.contains 直接断言，不必去数数组下标。
+        data.put("ids", String.join(",", ids));
+        ok(ex, data);
+    }
     private static void handleLogTail(HttpExchange ex) throws IOException {
         if (!authorized(ex)) {
             return;

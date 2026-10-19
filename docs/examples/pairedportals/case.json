@@ -1,0 +1,574 @@
+{
+  "name": "pairedportals-core-with-shots",
+  "steps": [
+    {
+      "id": "forceload",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "forceload add 48 0"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "加载目标区块：后面的 setblock/fill 才落得下（未加载时命令会静默无效）"
+    },
+    {
+      "id": "clear-leftover-travellers",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "kill @e[type=!minecraft:player,x=47,y=98,z=-1,dx=13,dy=6,dz=2]"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "清掉上一轮可能遗留的实体：否则它们会自己穿门，日志里多出 travel 行"
+    },
+    {
+      "id": "creative",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "gamemode creative {{player}}"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "创造模式：玩家进传送门的等待时间是 1 tick，不用等 4 秒"
+    },
+    {
+      "id": "player-to-view",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/teleport",
+      "body": {
+        "player": "{{player}}",
+        "to": [
+          53.5,
+          100.0,
+          8.0
+        ]
+      },
+      "waitMs": 800,
+      "expect": {
+        "status": 200
+      },
+      "note": "把客户端玩家挪到两扇门正前方（53.5,100,8）：之后每张截图都是这个机位，能同时框住两扇门"
+    },
+    {
+      "id": "frame-a",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "fill 48 99 0 51 103 0 minecraft:obsidian"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "第一扇门：黑曜石框"
+    },
+    {
+      "id": "hole-a",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "fill 49 100 0 50 102 0 minecraft:air"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "门洞清空（门面 2 宽 3 高）"
+    },
+    {
+      "id": "shot-frame",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "waitMs": 600,
+      "expect": {
+        "status": 200
+      },
+      "note": "框搭好了：用 /world/block 逐格读回黑曜石与门洞空气"
+    },
+    {
+      "id": "sign-a",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "setblock 49 100 0 minecraft:oak_sign[rotation=8]{front_text:{messages:[\"core-a\",\"\",\"\",\"\"]}}"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "门洞里放告示牌并写文字 core-a（门名 = 门洞内唯一有内容的告示牌正面四行）"
+    },
+    {
+      "id": "shot-sign",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "waitMs": 600,
+      "expect": {
+        "status": 200
+      },
+      "note": "告示牌已在框内：/block/sign 读回四行文字（这也是后续配对的门名）"
+    },
+    {
+      "id": "ignite-a",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "setblock 50 100 0 minecraft:fire"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "点火激活第一扇门"
+    },
+    {
+      "id": "portal-a-left",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=49&y=101&z=0",
+      "expect": {
+        "status": 200,
+        "contains": {
+          "data.block": "nether_portal"
+        }
+      },
+      "note": "断言门洞左列变成 nether_portal（服务端权威方块状态）"
+    },
+    {
+      "id": "portal-a-right",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=50&y=101&z=0",
+      "expect": {
+        "status": 200,
+        "contains": {
+          "data.block": "nether_portal"
+        }
+      },
+      "note": "断言门洞右列变成 nether_portal"
+    },
+    {
+      "id": "shot-ignited",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "waitMs": 900,
+      "expect": {
+        "status": 200
+      },
+      "note": "第一扇门已亮：/world/block 两列都读到 nether_portal"
+    },
+    {
+      "id": "list-1",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "pairedportals list"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "执行 /pairedportals list：1 扇门、尚未配对"
+    },
+    {
+      "id": "log-1-unbound",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=40",
+      "expect": {
+        "status": 200,
+        "text": [
+          "1 portal(s): 0 bound pair(s) (0 door(s))"
+        ]
+      },
+      "note": "命令回执进日志：头行计数是 1 portal / 0 bound pair"
+    },
+    {
+      "id": "info-a",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "pairedportals info 49 100 0"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "执行 /pairedportals info 49 100 0"
+    },
+    {
+      "id": "log-a-pending",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=60",
+      "expect": {
+        "status": 200,
+        "text": [
+          "state: PENDING"
+        ]
+      },
+      "note": "info 回执里 state 是 PENDING（还没有同名的第二扇门）"
+    },
+    {
+      "id": "frame-b",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "fill 56 99 0 59 103 0 minecraft:obsidian"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "第二扇门的黑曜石框（与第一扇隔开 7 格，便于一张截图同时看两扇）"
+    },
+    {
+      "id": "hole-b",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "fill 57 100 0 58 102 0 minecraft:air"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "第二扇门门洞清空"
+    },
+    {
+      "id": "sign-b-same-text",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "setblock 57 100 0 minecraft:oak_sign[rotation=8]{front_text:{messages:[\"core-a\",\"\",\"\",\"\"]}}"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "第二扇门里放同文字 core-a 的告示牌：配对靠「门名字相同」"
+    },
+    {
+      "id": "ignite-b",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "setblock 58 100 0 minecraft:fire"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "点燃第二扇门"
+    },
+    {
+      "id": "portal-b",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=57&y=101&z=0",
+      "expect": {
+        "status": 200,
+        "contains": {
+          "data.block": "nether_portal"
+        }
+      },
+      "note": "断言第二扇门也变成 nether_portal"
+    },
+    {
+      "id": "list-2",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "pairedportals list"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "再执行一次 list"
+    },
+    {
+      "id": "log-2-bound",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=60",
+      "expect": {
+        "status": 200,
+        "text": [
+          "2 portal(s): 1 bound pair(s) (2 door(s))"
+        ]
+      },
+      "note": "头行变成 2 portal(s): 1 bound pair(s) (2 door(s))：两扇门已配对"
+    },
+    {
+      "id": "info-b",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "pairedportals info 57 100 0"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "对第二扇门执行 info"
+    },
+    {
+      "id": "log-b-bound",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=80",
+      "expect": {
+        "status": 200,
+        "text": [
+          "state: BOUND"
+        ]
+      },
+      "note": "第二扇门的 state 是 BOUND（与第一扇建立私有链接）"
+    },
+    {
+      "id": "shot-pair",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "waitMs": 900,
+      "expect": {
+        "status": 200
+      },
+      "note": "两扇门同时亮着：/world/block 对两扇门各读一次，四列全 nether_portal"
+    },
+    {
+      "id": "chat-before-travel",
+      "target": "client",
+      "method": "GET",
+      "path": "/chat/tail?n=5",
+      "expect": {
+        "status": 200
+      },
+      "note": "进门前：取客户端聊天尾巴，确认没有异常提示"
+    },
+    {
+      "id": "shot-before-travel",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "expect": {
+        "status": 200,
+        "contains": {
+          "data.playerPosX": "53.5"
+        }
+      },
+      "note": "进门前先取客户端 /status 的 playerPosX（53.5）与聊天尾巴，作为对照"
+    },
+    {
+      "id": "player-into-portal",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/teleport",
+      "body": {
+        "player": "{{player}}",
+        "to": [
+          50.5,
+          100.0,
+          0.5
+        ]
+      },
+      "waitMs": 300,
+      "expect": {
+        "status": 200
+      },
+      "note": "服务端把玩家传进第一扇门的门洞坐标（50.5,100,0.5）"
+    },
+    {
+      "id": "player-travelled",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "retry": {
+        "times": 40,
+        "intervalMs": 250
+      },
+      "expect": {
+        "status": 200,
+        "contains": {
+          "data.playerPosX": "58.5"
+        }
+      },
+      "note": "重试读客户端 /status，直到 playerPosX=58.5：玩家已经站在第二扇门的位置（穿门成功，坐标是硬证据）"
+    },
+    {
+      "id": "shot-after-travel",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "expect": {
+        "status": 200
+      },
+      "note": "穿门后客户端 /status 的 playerPosX 变 58.5：这是「真的过去了」的硬证据"
+    },
+    {
+      "id": "log-travel",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=60",
+      "expect": {
+        "status": 200,
+        "text": [
+          "travel:"
+        ]
+      },
+      "note": "服务端日志里出现 travel: 行：这次穿门被 MOD 自己记录"
+    },
+    {
+      "id": "player-back-to-view",
+      "target": "server",
+      "method": "POST",
+      "path": "/action/teleport",
+      "body": {
+        "player": "{{player}}",
+        "to": [
+          53.5,
+          100.0,
+          8.0
+        ]
+      },
+      "waitMs": 800,
+      "expect": {
+        "status": 200
+      },
+      "note": "把玩家挪回统一机位，好拍拆门那一步"
+    },
+    {
+      "id": "break-frame-a",
+      "target": "server",
+      "method": "POST",
+      "path": "/world/break?x=48&y=100&z=0",
+      "expect": {
+        "status": 200,
+        "json": {
+          "data.removed": true
+        }
+      },
+      "note": "拆掉第一扇门的框（破坏黑曜石）"
+    },
+    {
+      "id": "hole-a-cleared",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=50&y=101&z=0",
+      "expect": {
+        "status": 200,
+        "contains": {
+          "data.block": "air"
+        }
+      },
+      "note": "第一扇门门洞变 air"
+    },
+    {
+      "id": "twin-hole-cleared",
+      "target": "server",
+      "method": "GET",
+      "path": "/world/block?x=57&y=101&z=0",
+      "retry": {
+        "times": 20,
+        "intervalMs": 250
+      },
+      "expect": {
+        "status": 200,
+        "contains": {
+          "data.block": "air"
+        }
+      },
+      "note": "第二扇门门洞也变 air：配对的门一起消失（MOD 在下一个校验 tick 执行，所以这里用 retry 等它）"
+    },
+    {
+      "id": "log-3-twin-gone",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=80",
+      "expect": {
+        "status": 200,
+        "text": [
+          "went down with its twin"
+        ]
+      },
+      "note": "日志出现 went down with its twin"
+    },
+    {
+      "id": "list-3",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "pairedportals list"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "再执行一次 list"
+    },
+    {
+      "id": "log-4-zero",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=60",
+      "expect": {
+        "status": 200,
+        "text": [
+          "0 portal(s): 0 bound pair(s) (0 door(s))"
+        ]
+      },
+      "note": "计数回到 0 portal / 0 bound pair"
+    },
+    {
+      "id": "shot-demolished",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "waitMs": 900,
+      "expect": {
+        "status": 200
+      },
+      "note": "拆掉一端后两端门洞都读到 air：一张图看不出来，靠两次 /world/block"
+    },
+    {
+      "id": "cleanup",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "fill 47 98 -1 60 104 1 minecraft:air"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "清掉测试搭的所有方块"
+    },
+    {
+      "id": "forceload-clear",
+      "target": "server",
+      "method": "POST",
+      "path": "/command",
+      "body": {
+        "cmd": "forceload remove 48 0"
+      },
+      "expect": {
+        "status": 200
+      },
+      "note": "撤销区块加载"
+    }
+  ]
+}
