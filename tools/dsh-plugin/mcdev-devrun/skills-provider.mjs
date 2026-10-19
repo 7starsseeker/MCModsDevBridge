@@ -90,7 +90,7 @@ const SKILLS = [
   {
     name: 'mcdev-instance-setup',
     description:
-      '把套件部署到一台新机器/新目录并让它认得你已有的游戏实例：为什么套件不带运行时（三条打包断言）、L0/L1/L2 该建几套环境与端口约定、provision-instance 取运行时的三条路（下载/复制/离线）、只有 NeoForge maven 需要代理以及代理必须注入的四处、install-probe 为什么写配置文件而不是 -D、install-mod 的 sha256 记账与卸载、instances/<name>.json 全字段与 client.mode 的三选一。遇到部署、换机器、实例认不到、代理/镜像/离线问题时读它。',
+      '把套件部署到一台新机器/新目录并让它认得你已有的游戏实例：为什么套件不带运行时（三条打包断言）、L0/L1/L2 该建几套环境与端口约定、provision-instance 取运行时的三条路（下载/复制/离线）、只有 NeoForge maven 需要代理以及代理必须注入的四处、install-probe 为什么写配置文件而不是 -D、install-mod 的 sha256 记账与卸载、instances\名字.json 全字段与 client.mode 的三选一。遇到部署、换机器、实例认不到、代理/镜像/离线问题时读它。',
   },
 ]
 
