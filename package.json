@@ -1,0 +1,60 @@
+{
+  "name": "MCModsDevBridge",
+  "version": "1.0.0",
+  "description": "Minecraft 26.3 mod development bridge for DeepSeek Harness: starts a real dedicated server and a real client, connects and ops, runs a scenario JSON of probe HTTP calls, collects evidence and tears everything down, on Fabric / Forge / NeoForge. Ships 11 skills covering the probe protocol, the scenario DSL, fixtures, instance setup and the traps found on 26.3.",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "minecraft",
+    "mod-development",
+    "fabric",
+    "forge",
+    "neoforge",
+    "probe",
+    "end-to-end",
+    "powershell",
+    "windows"
+  ],
+  "type": "module",
+  "main": "tools/dsh-plugin/mcdev-devrun/dsh.mjs",
+  "exports": {
+    ".": "./tools/dsh-plugin/mcdev-devrun/dsh.mjs",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "scripts",
+    "tools",
+    "scenarios",
+    "docs",
+    "cordis.patch.yml",
+    "README.md",
+    "NOTICE",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE"
+  ],
+  "license": "Apache-2.0",
+  "author": "7starsseeker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/7starsseeker/MCModsDevBridge.git"
+  },
+  "homepage": "https://github.com/7starsseeker/MCModsDevBridge#readme",
+  "bugs": {
+    "url": "https://github.com/7starsseeker/MCModsDevBridge/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

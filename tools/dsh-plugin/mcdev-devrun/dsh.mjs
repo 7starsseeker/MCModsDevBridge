@@ -15,8 +15,9 @@
  *
  * ── 依赖 ─────────────────────────────────────────────────────────────────────
  * · `pwsh` 在 PATH（本机 PowerShell 7）；
- * · 工作区根目录：安装时写入的 `mcdev-root.txt` → `MCDEV_ROOT` → 从 `exec.cwd` 往上找
- *   带 `scripts/devrun.ps1` 的那一级 —— 三种来源都失败就明确报错，不猜。
+ * · 工作区根目录：安装时写入的 `mcdev-root.txt` → `MCDEV_ROOT` → 包自身位置（用
+ *   `dsh plugin add` 装成 npm 包时，`scripts/` 随包一起，cwd 却不在仓库里）→ 从 `exec.cwd`
+ *   往上找带 `scripts/devrun.ps1` 的那一级 —— 都失败就明确报错，不猜。
  *
  * ── 关掉 / 回滚 ──────────────────────────────────────────────────────────────
  * · 临时关：`$DSH_HOME/cordis.patch.yml` 里给这段 `- insert:` 加 `disabled: true`，重启 DSH。
@@ -78,12 +79,21 @@ function readStamp() {
   }
 }
 
-/** 找工作区根：安装时写入的 mcdev-root.txt → env(MCDEV_ROOT) → 从 cwd 往上找。 */
+/**
+ * 找工作区根：安装时写入的 mcdev-root.txt → env(MCDEV_ROOT) → 包自身位置 → 从 cwd 往上找。
+ *
+ * 「包自身位置」是给插件市场安装路径准备的：`dsh plugin add` 把整包放进 node_modules，
+ * package.json 的 files 里带着 scripts/，所以包根就是工作区根；此时 cwd 通常在别处，
+ * 往上走一辈子也找不到 —— 必须先问「我自己住哪」。
+ */
 function resolveRoot(cwd) {
   const stamped = readStamp()
   if (stamped && existsSync(join(stamped, 'scripts', 'devrun.ps1'))) return stamped
   const fromEnv = process.env.MCDEV_ROOT
   if (fromEnv && existsSync(join(fromEnv, 'scripts', 'devrun.ps1'))) return fromEnv
+  // HERE = <包>/tools/dsh-plugin/mcdev-devrun，往上三级即包根。
+  const pkgRoot = join(HERE, '..', '..', '..')
+  if (existsSync(join(pkgRoot, 'scripts', 'devrun.ps1'))) return pkgRoot
   let dir = cwd || process.cwd()
   for (let i = 0; i < 8; i++) {
     if (existsSync(join(dir, 'scripts', 'devrun.ps1'))) return dir
@@ -93,7 +103,8 @@ function resolveRoot(cwd) {
   }
   throw new Error(
     '找不到 MCModsDevBridge 工作区（需要 scripts/devrun.ps1）。' +
-      '设置 MCDEV_ROOT 指向工作区根，或把工具的 cwd 设到工作区内的某个目录。',
+      '设置 MCDEV_ROOT 指向工作区根，把工具的 cwd 设到工作区内的某个目录，' +
+      '或用市场安装（脚本随包一起，包根即工作区根）。',
   )
 }
 

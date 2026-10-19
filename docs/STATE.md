@@ -142,6 +142,16 @@
 >   `devrun-matrix -Cases tmp\cases-relocated.json` → `tmp\matrix-relocated2` **2/2 全部符合预期 exit 0**
 >   （case1 5/5、case2 6/6，`world-create` 回 `"backup":"skip","backupAction":"skipped"`，`world-ready` 第 3 次命中）；
 >   `scenarios/singleplayer.json` → `tmp\devrun-sp-relocated` **5/5 PASS exit 0**。
+> **2026-10-20 04:10 增补（按插件市场标准打包；名字用工作区名）**：根目录新增 `package.json`
+> （`name: MCModsDevBridge`、`main` 指 `tools/dsh-plugin/mcdev-devrun/dsh.mjs`、`dsh.bundle.patch` 指根
+> `cordis.patch.yml`）与 `cordis.patch.yml`（`- insert: [{id: mcdev-devrun, name: MCModsDevBridge}]`），
+> 于是 `dsh plugin add github:<owner>/MCModsDevBridge` 能按市场约定装。`dsh.mjs` 的 `resolveRoot` 多了一条
+> **包根兜底**（`HERE/../../..` 里有 `scripts/devrun.ps1` 就用它）——市场把整包装进 `node_modules` 时 cwd
+> 不在仓库里，原来会报「找不到工作区」。实测：`npm pack` 64 文件 / 787 KB（无 `lab/`、`dist/`、`tmp/`、
+> `instances/`）；**从 tgz 装进临时工程、cwd 设在仓库外，`mcdev_scenarios` 仍能定位到包根并列出场景**；
+> `selftest.mjs` 增了 9 条包清单断言（name/patch/main/exports/files 一致性 + 包外 cwd 兜底）。两个已知边界：
+> ① 包名含大写，**npm 官方仓库会拒**（`dsh plugin add github:…` 与市场收录不受影响）；② 仓库还需在 GitHub
+> 加 `dsh-plugin` topic、且建满 1 天，市场 CI 才会放行条目 PR。
 > **2026-10-20 03:05 增补（上面「还没证」的那些，现在都有证据了）**：Forge/NeoForge 的独立客户端真机跑通，
 > 三条 `fixture-*` 场景各跑一遍（客户端 gamedir `tmp\client-forge-fixture` / `tmp\client-neoforge-fixture`，
 > 客户端版本 `26.3-Forge-test` / `26.3-NeoForge-test`）：

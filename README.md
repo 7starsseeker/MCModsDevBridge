@@ -78,6 +78,18 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance local -Scenario scenarios\smo
 pwsh -NoProfile -File scripts\install-dsh-plugin.ps1 -Mode install
 ```
 
+### 从插件市场安装（可选）
+
+本仓库同时是一个 DSH 插件包（`package.json` 里有 `dsh.bundle`，根目录有 `cordis.patch.yml`）：
+
+```powershell
+dsh plugin add github:7starsseeker/MCModsDevBridge
+```
+
+`scripts/`、`scenarios/`、`tools/` 随包一起装进来，**包根就是工作区根**，插件自己会找到它
+（也可以用 `MCDEV_ROOT` 指到别处）。装完重启 DSH。这个包**不带** Minecraft 服务端 / 客户端 / 加载器
+文件 —— 装完仍要按上面的「快速开始」登记实例，或用 `-ProbeJar` 指定探针 jar。
+
 ## 客户端怎么来
 
 客户端有三种形态，选一种写进实例登记的 `client.mode`：

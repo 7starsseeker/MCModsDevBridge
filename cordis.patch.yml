@@ -1,0 +1,15 @@
+# dsh-mcdev-devrun 的 bundle patch 层。
+#
+# `dsh plugin add github:7starsseeker/MCModsDevBridge`（或本地路径）会读本文件，把这条 loader
+# entry 插进 profile 树。插件市场只收「package.json 里声明了 `dsh.bundle` 且带本文件」的包。
+#
+# 两条硬规则（写错会在开机解析阶段就失败，症状是启动即报错，不是功能不好用）：
+#   · `name` 必须与 package.json 的 `name` **完全一致**（MCModsDevBridge，与 package.json 的 name 一致）；
+#   · `id` 是 Cordis 插件 id，等于 dsh.mjs 的 `export const name`（mcdev-devrun）。
+#
+# 这里没有需要覆写的配置：插件只是个薄包装，编排逻辑全在包内的 `scripts/devrun.ps1`。
+# 机器相关的值（游戏目录、java、端口、代理）全在 `instances/<名字>.json` 里，由使用者用
+# scripts/setup-wizard.ps1 或 scripts/register-instance.ps1 现场生成 —— 不进这个文件，也不进仓库。
+- insert:
+    - id: mcdev-devrun
+      name: 'MCModsDevBridge'
