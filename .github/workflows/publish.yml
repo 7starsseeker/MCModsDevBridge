@@ -1,0 +1,55 @@
+name: publish
+
+# 推 v* tag 时发布到 npm。
+# 凭证走 npm 的 Trusted Publishing（OIDC）：不需要任何 token/secret，
+# 但要求 npm CLI >= 11.5.1，且这里的 workflow 文件名必须与 npm 页面
+# 配置的 "Workflow filename" 一致（publish.yml）。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（形如 v1.0.1）；留空则用触发时的 ref'
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 升级 npm（Trusted Publishing 需要 >= 11.5.1）
+        run: npm install -g npm@latest
+
+      - name: 校验 tag 与 package.json 的 version 一致
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          case "$TAG" in
+            v*) ;;
+            *) echo "tag 不是 v* 形式：$TAG"; exit 1 ;;
+          esac
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "tag=$TAG 与 package.json 的 version=$VERSION 不一致，拒绝发布"
+            exit 1
+          fi
+          echo "准备发布 mcmodsdevbridge@$VERSION（tag $TAG）"
+
+      - name: 发布前自检
+        run: node tools/dsh-plugin/selftest.mjs
+
+      - name: 发布到 npm（OIDC，无 token）
+        run: npm publish --provenance --access public
