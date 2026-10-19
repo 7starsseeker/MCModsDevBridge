@@ -499,3 +499,10 @@ Gradle（同上或 `systemProp.*`）、外部客户端实例（启动器 JVM 参
   不是现有 12 条能摊出来的；是否为了覆盖率先扩端点，需用户定优先级。
 - 公开发布形态：DSH 插件 + 三套探针 jar 是给 DSH 用户用的；如果目标受众是不用 DSH 的 MC modder，HTTP 接口才是产品边界（架构上已隔离好，但发布物料要另做）
 
+> **2026-10-20 02:40 增补（用例矩阵：装什么/跑什么/卸干净）**：新增 `scripts/install-mod.ps1`
+> （装/卸/列被测 jar，sha256 记账，`-Remove` 只删自己装的、被换过就停下，Fabric `environment` 与侧不符时警告）
+> 与 `scripts/devrun-matrix.ps1`（按用例文件串行跑：装两侧 → devrun 子进程 → 精确卸载 → 读 summary 判绿/红，
+> 支持 `expectFail` 把「该红」写成数据）。实测：三条 fixture 用例 **3/3 符合预期**（`tmp\matrix-fixtures`），
+> 反例（期望写反 → 「意外变绿」、jar 不存在 → 「跑挂」并继续）在 `tmp\matrix-negative`；跑完两端 `mods\` 回到基线。
+> 踩坑记录：参数 `[string]$Cases` 的类型约束会传染给同名（大小写不敏感）局部变量，`$cases = @(...)` 被静默转成
+> 两个空格 —— 参数名与局部变量名不要只靠大小写区分（向导里的 `$Mode` 是同一个坑）。

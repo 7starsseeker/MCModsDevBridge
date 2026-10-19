@@ -1038,3 +1038,41 @@ N1–N3 的触发条件是「受支持 minor 版本数达到 2」，不是日期
 ---
 
 *本文件为架构产物，不含实现。任何实现细节与本文档冲突时，以本文档为准；确需偏离时必须先改本文档，说明理由。*
+
+### 9.7 用例矩阵：把「装什么 / 跑什么 / 期望什么」变成数据（2026-10-20 实测）
+
+前六节都在补「能力」，这一节补的是**跑法**：能力齐了以后，一个矩阵（四类 mod × 三种加载器）还是得靠
+手敲十几条命令，而 `devrun -Mods` 只负责「这一次顺便拷进去」，它不记账、也不卸载 —— 下一个 case 开跑时
+上一轮的 jar 还在 `mods\` 里，`/mods` 断言就分不清是谁在起作用。两个脚本合起来解决这件事：
+
+| 脚本 | 职责 | 关键点 |
+|---|---|---|
+| `scripts/install-mod.ps1` | 装/卸/列某个游戏目录里的被测 jar | 每个文件记 sha256 到 `<目录>\config\mcdev-mods.manifest.json`；`-Remove` 只删「登记过且 sha256 对得上」的（被换过就停下，`-Force` 才删）；Fabric 的 `environment` 与目标侧不符时给警告 |
+| `scripts/devrun-matrix.ps1` | 按用例文件串行跑 | 装两侧 → 起 devrun 子进程 → 精确卸载 → 读 `summary.md` 的 `PASS=n FAIL=m total=t` 判绿/红；`expectFail: true` 把「该红」写成数据 |
+
+用例文件字段：`name` / `instance` / `scenario`（必填）、`serverMods` / `clientMods`（相对仓库根的 jar）、
+`expectFail`（默认 false）、`note`（只进汇总表）。判定口径：
+
+- `expectFail: false` → `exit=0` 才算「绿」；
+- `expectFail: true` → 必须 `exit≠0`；绿了报**「意外变绿（期望失败）」**，这比「红了」更值得看；
+- 装/跑过程中的配置错误（实例不存在、jar 不存在）记「跑挂」并继续下一条，不会让整批连结果都没有。
+
+实测证据（同一台机器、Fabric）：
+
+| 用例 | 场景 | 结果 |
+|---|---|---|
+| `fixture-both` | `scenarios/fixture-both.json`（两侧都装） | 绿，`PASS=5 FAIL=0` |
+| `fixture-client-missing` | `scenarios/fixture-client-missing.json`（只装服务端） | 绿，`PASS=4 FAIL=0` |
+| `fixture-server-missing` | `scenarios/fixture-server-missing.json`（只装客户端） | 绿，`PASS=5 FAIL=0` |
+
+三条合计 **3/3 符合预期**，取证 `tmp\matrix-fixtures`（每个用例子目录里 `summary.md` / `results.json` /
+`server.out` / `client.out`，另有 `install-*.log` / `uninstall-*.log` 记录这一轮装了什么、卸了什么）；
+跑完两端 `mods\` 回到基线（`fabric-api` / `mcdev_probe` / `pairedportals`），没有残留清单文件。
+反例也实跑过（`tmp\matrix-negative`）：把 `expectFail` 写反 → 「意外变绿（期望失败）」；jar 路径写错 →
+「跑挂」且下一条不再受影响。
+
+**踩到这个坑值得记一笔**：`devrun-matrix.ps1` 一开始把用例数组赋给局部变量 `$cases`，而参数是
+`[string]$Cases` —— PowerShell 的变量名大小写不敏感，**参数上的类型约束会传染给同名局部变量**，
+于是 `$cases = @($casesObj.cases)` 被静默转成字符串（三个 PSCustomObject 拼出两个空格），
+报错信息显示成「用例缺少字段 'name'："  "」。同一个坑之前在向导里也踩过（`$Mode`），
+这次的教训是：**参数名和局部变量名不要只靠大小写区分，尤其是带 `[string]` 约束的参数**。

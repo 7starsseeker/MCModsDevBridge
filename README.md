@@ -141,6 +141,50 @@ pwsh -NoProfile -File scripts\register-instance.ps1 -Name sp -Side client -Loade
 pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\singleplayer.json
 ```
 
+### 跑一组用例：装什么 → 跑什么 → 卸干净
+
+`devrun -Mods` 是「跑一次顺手拷进去」，它不记账也不卸载。换一个 case 接着跑时，上一轮装在
+`mods\` 里的 jar 还在，这一轮的断言就不知道在验谁。两个脚本补上这一半：
+
+- **`scripts/install-mod.ps1`**：把被测 jar 装进目标目录，并把每个文件的 sha256 记进
+  `<目录>\config\mcdev-mods.manifest.json`；`-Remove` 只删登记过且 sha256 对得上的文件
+  （被手动换过就停下，`-Force` 才删）；`-List` 看现状。它还会读 Fabric 的 `environment`
+  字段，往错了的一侧装时给警告（例如把 `environment: "client"` 的 jar 装进服务端）。
+- **`scripts/devrun-matrix.ps1 -Cases <用例文件>`**：按用例串行跑——装服务端/客户端 mod →
+  起 `devrun` 跑该场景 → 精确卸掉 → 读 `summary.md` 的 `PASS=n FAIL=m` 行判绿/红。
+
+用例文件长这样（`instance` 是你自己登记过的实例名）：
+
+```json
+{
+  "cases": [
+    {
+      "name": "fixture-both",
+      "instance": "fam-fabric",
+      "scenario": "scenarios/fixture-both.json",
+      "serverMods": ["lab/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
+      "clientMods": ["lab/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
+      "note": "两端都装：握手双向都通"
+    },
+    {
+      "name": "expect-missing-half",
+      "instance": "fam-fabric",
+      "scenario": "scenarios/fixture-client-missing.json",
+      "serverMods": ["lab/fixture/build/libs/mcdev_fixture-1.0.0.jar"],
+      "expectFail": true
+    }
+  ]
+}
+```
+
+字段：`name` / `instance` / `scenario` 必填；`serverMods` / `clientMods` 是相对仓库根的 jar；
+`expectFail: true` 表示「这条本来就该红」，红了才算符合预期（用来正面表达「缺少一半时应该
+报错」这类断言）；`note` 只进汇总表。每个用例的取证落在 `<EvidenceDir>\<用例名>\`，
+根目录另有一份 `matrix-summary.md`。退出码 0 表示所有用例都符合预期。
+
+实测（2026-10-20）：三条 fixture 用例 **3/3 符合预期**（`tmp\matrix-fixtures`）；
+故意写反的期望报「意外变绿」，jar 不存在的用例记「跑挂」并继续下一条（`tmp\matrix-negative`）。
+每个用例跑完后两端 `mods\` 都回到基线，没有留下清单文件。
 ### 环境解析约定
 
 脚本不假设任何固定路径，`scripts/lib/Env.ps1` 统一解析：
@@ -160,7 +204,7 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\single
 |---|---|
 | `lab/shared/` | 三家共用的探针实现（服务端 / 客户端 / 动作后端 / 命令） |
 | `lab/fabric/` `lab/forge/` `lab/neoforge/` | 三家加载器的构建骨架与入口类 |
-| `scripts/` | `devrun` 编排、实例登记、部署向导、探针装卸（`install-probe` / `remove-probe`）、打包、DSH 插件安装 |
+| `scripts/` | `devrun` 编排、`devrun-matrix` 用例矩阵、实例登记、部署向导、探针装卸（`install-probe` / `remove-probe`）、被测 mod 装卸（`install-mod`）、打包、DSH 插件安装 |
 | `scripts/lib/` | `Env.ps1`（java/代理解析）、`Launch.ps1`（按版本清单拼客户端命令行） |
 | `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities` / `singleplayer` / `fixture-*`（三端组合的样本场景）；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
 | `tools/dsh-plugin/` | DSH 插件（`mcdev_devrun` / `mcdev_scenarios`） |
