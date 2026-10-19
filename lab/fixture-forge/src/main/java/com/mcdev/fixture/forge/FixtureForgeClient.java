@@ -2,7 +2,9 @@ package com.mcdev.fixture.forge;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.chat.Component;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
+import net.minecraftforge.client.event.SystemMessageReceivedEvent;
 import net.minecraftforge.event.TickEvent;
 
 /**
@@ -28,13 +30,23 @@ final class FixtureForgeClient {
     static void install() {
         FixtureForge.LOGGER.info("{} client side active", FixtureForge.LOG_PREFIX);
         TickEvent.ClientTickEvent.Post.BUS.addListener(event -> onClientTick());
-        ClientChatReceivedEvent.BUS.addListener(event -> {
-            if (!acked && event.getMessage().getString()
-                    .contains(FixtureForge.LOG_PREFIX + " ack")) {
-                acked = true;
-                FixtureForge.LOGGER.info("{} client got ack", FixtureForge.LOG_PREFIX);
-            }
-        });
+        // Forge 26.3 把「系统消息」和「玩家聊天」拆成了两个事件：
+        // 命令回执（sendSuccess）走 SystemMessageReceivedEvent，玩家聊天走
+        // ClientChatReceivedEvent（另有 .Player 子类）。两个都订阅，才不管
+        // ack 从哪条通道来都认得出 —— 只订阅前者会漏玩家聊天，只订阅后者
+        // 会漏命令回执（本 fixture 第一版就是这么错的：ack 到了，没人接）。
+        ClientChatReceivedEvent.BUS.addListener(event -> { onChatMessage(event.getMessage()); });
+        SystemMessageReceivedEvent.BUS.addListener(event -> { onChatMessage(event.getMessage()); });
+    }
+
+    private static void onChatMessage(Component message) {
+        if (acked || message == null) {
+            return;
+        }
+        if (message.getString().contains(FixtureForge.LOG_PREFIX + " ack")) {
+            acked = true;
+            FixtureForge.LOGGER.info("{} client got ack", FixtureForge.LOG_PREFIX);
+        }
     }
 
     private static void onClientTick() {

@@ -115,6 +115,28 @@
 > **还没证**（别当已证）：客户端那一半没起客户端（`client sent hello` / `client got ack`、三条 `fixture-*` 场景、
 > 两条超时路径都只在 Fabric 上验过），Forge/NeoForge 的客户端分支目前只过编译。要补只需拿 `scenarios/fixture-both.json`
 > 在对应实例上跑一次，场景不用改。
+>
+> **2026-10-20 03:05 增补（上面「还没证」的那些，现在都有证据了）**：Forge/NeoForge 的独立客户端真机跑通，
+> 三条 `fixture-*` 场景各跑一遍（客户端 gamedir `tmp\client-forge-fixture` / `tmp\client-neoforge-fixture`，
+> 客户端版本 `26.3-Forge-test` / `26.3-NeoForge-test`）：
+> - 两端都装 `scenarios/fixture-both.json`：forge `tmp\detect-fix-forge2` **5/5 PASS exit 0**、
+>   neoforge `tmp\detect-fix-neoforge2` **5/5 PASS exit 0**（`client sent hello` → `server got hello from` → `client got ack`）。
+> - 只装服务端 `scenarios/fixture-client-missing.json`：forge `tmp\detect-fix-forge-clientmissing` **4/4**、
+>   neoforge `tmp\detect-fix-neo-clientmissing` **4/4**（`server-reports-missing` 分别 3 / 4 次尝试后命中）。
+> - 只装客户端 `scenarios/fixture-server-missing.json`：forge `tmp\detect-fix-forge-servermissing` **5/5**、
+>   neoforge `tmp\detect-fix-neo-servermissing` **5/5**（`client-reports-missing` 分别 9 / 8 次尝试后命中）。
+>
+> 过程中撞到三件事，都已修在公共面而不是样本里：①**Forge 26.3 的消息是两个事件** —— `ClientChatReceivedEvent`
+> 只发玩家聊天，命令回执走 `net.minecraftforge.client.event.SystemMessageReceivedEvent`（`isOverlay()`），
+> `FixtureForgeClient` 现在两个 BUS 都订；NeoForge 的 `ClientChatReceivedEvent` 自带 `Player` / `System`
+> 两个子类，订基类就够。②`CancellableEventBus` 同时有 `addListener(Consumer)` 与 `addListener(Predicate)`，
+> 表达式 lambda 会报「对 addListener 的引用不明确」，要写成块体 `event -> { ... }`。③`Launch.ps1` 的占位符表
+> 少了 `${library_directory}` / `${classpath_separator}` —— 实测只有 `26.3-NeoForge-test.json` 用到
+> `${library_directory}`（`-DlibraryDirectory=...`），Forge/Fabric 的清单没有；`${classpath_separator}` 是顺手按
+> 标准清单补上的。这是**套件的通用缺口**，不是某个加载器的特性。
+> 收尾：两服 `mods\` 与两客户端 `mods\` 的 fixture 都已 `install-mod -Remove` 卸掉，`_fix-*` 临时实例已删；
+> `<MC_ROOT>\Server2\whitelist.json` 里加了 `mcdev`（备份 `whitelist.json.bak-20261020-021254`），
+> 因为 `Server2` 开着 `white-list=true`。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
 

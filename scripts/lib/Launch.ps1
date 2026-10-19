@@ -172,6 +172,11 @@ function Build-MinecraftLaunch {
         '${launcher_name}'       = 'mcdev-devrun'
         '${launcher_version}'    = '1'
         '${classpath}'           = ($classpath -join ';')
+        # 下面两个是 NeoForge 一类加载器的版本清单会用的（HMCL 合并后的清单里
+        # 出现过 -DlibraryDirectory=${library_directory}）：library_directory 就是
+        # 启动器的 libraries 根，classpath_separator 在 Windows 上是分号。
+        '${library_directory}'   = (Join-Path $Root 'libraries')
+        '${classpath_separator}' = ';'
     }
 
     function Expand-Args($Entries) {

@@ -213,8 +213,8 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\single
 | `lab/fixture/` | **测试样本 mod（Fabric，6.8 KB）**：唯一用途是证明「两端都必须有的 mod」能被断言 —— 服务端等握手、客户端发握手，缺一侧就写日志。不是示例 mod，也不是能力清单 |
 | `lab/fixture-client/` | **测试样本 mod（Fabric，3.0 KB，`environment: "client"`）**：证明「只有客户端一半」的 mod 在单人世界/连服时照样生效，而服务端 `/mods` 里根本没有它 |
 | `lab/fixture-server/` | **测试样本 mod（Fabric，3.1 KB，`environment: "server"`）**：证明「只有服务端一半」的 mod 在客户端根本没有它时照样收到 JOIN、照样 tick |
-| `lab/fixture-forge/` | **同一个样本的 Forge 版（6.9 KB，modId 同样是 `mcdev_fixture`）**：语义与 `lab/fixture` 一致 —— 客户端发握手、服务端收并回 ack、缺一侧就写日志。目前只做到「构建 + 服务端加载实证」（见 `docs/architecture.md` §9.8） |
-| `lab/fixture-neoforge/` | **同一个样本的 NeoForge 版（6.8 KB，modId 同样是 `mcdev_fixture`）**：同上 |
+| `lab/fixture-forge/` | **同一个样本的 Forge 版（7.0 KB，modId 同样是 `mcdev_fixture`）**：语义与 `lab/fixture` 一致 —— 客户端发握手、服务端收并回 ack、缺一侧就写日志。构建 + 服务端加载 + 客户端那一半都实跑过（`fixture-both` 5/5、两条「缺一侧」4/4 与 5/5，见 `docs/architecture.md` §9.8） |
+| `lab/fixture-neoforge/` | **同一个样本的 NeoForge 版（6.8 KB，modId 同样是 `mcdev_fixture`）**：同上（`fixture-both` 5/5、两条「缺一侧」4/4 与 5/5） |
 
 先读 [docs/STATE.md](docs/STATE.md) 了解当前进度；[docs/architecture.md](docs/architecture.md) 讲整体设计；[docs/deployment-topology.md](docs/deployment-topology.md) 讲实例与端口分配。
 
