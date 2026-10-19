@@ -604,6 +604,34 @@ platform/<loader>/
 
 **这个 fixture 与具体被测 mod 无关**：它只证明「套件能把『缺一侧』变成 PASS/FAIL」。真实 mod 的握手方式（payload、通道名、超时）各自不同，读它的日志/配置/文档再写断言，照 `docs/examples/` 的思路而不是照抄这三条场景。
 
+### 9.4 单人世界入口：`/world/singleplayer` / `/world/leave`（2026-10-20 实测）
+
+前面几节都建立在「专用服 + 独立客户端」这个形态上，而它有一个覆盖不到的角落：**只在客户端生效的 mod**，以及**单机里的行为**。专用服里根本没有客户端那一半，验不了；换客户端单机跑，内置服务端又在同一个进程里，能连同 `environment: "*"` 的 mod 一起加载。
+
+客户端探针因此补了两个通用入口（不是能力域扩张，是把「客户端能自己起世界」这件事变成可编排的）：
+
+| 端点 | 参数 | 返回 |
+|---|---|---|
+| `POST /world/singleplayer` | `name`（世界 id，默认 `mcdev`）、`mode=normal\|flat`、`gamemode`、`allowCommands`、`seed`、`reuse` | `levelId` / `worldDir` / `renamed` / `openedExisting` / `mode` / `seed` |
+| `POST /world/leave` | — | `left` / `was` |
+
+实现要点（`ClientProbeServer.handleWorldSingleplayer`）：
+
+- 走 `Minecraft#createWorldOpenFlows()` 的 `createFreshLevel(String, LevelSettings, WorldOptions, Function<HolderLookup.Provider, WorldDimensions>, Screen)`；
+  `flat` 的维度函数用 `WorldPresets::createTestWorldDimensions`（`FLAT_ALL_DIMENSIONS` 预设），`normal` 用 `::createNormalWorldDimensions`。
+- 世界目录是 `<gamedir>/saves/<levelId>`：`LevelStorageSource.createDefault()` 要的是 **`saves` 这一层**，
+  传 gamedir 的话 `levelExists` 永远 false，撞名时会给回一个不存在的 `levelId`（第一版就这么错过）。
+- 撞名自动 `-2` / `-3`；`reuse=true` 时同名存在则 `WorldOpenFlows#openWorld(id, onFail)` 打开它 ——
+  反复跑同一场景不会把 `saves` 撑大。
+- 创建/打开是**异步**的：接口返回只代表「已提交」，就绪判据是客户端 `/status` 的 `inWorld`（`linked` 在单人世界里也为 true）。
+- 已在世界里再调创建 → `409`；`mode` / `gamemode` / `seed` 非法 → `400`。
+
+`scenarios/singleplayer.json`（5 步）就是这条链路的自检：create(flat, reuse) → 等 `inWorld` → 断言 `dimension`/`linked` → leave → 等 `inWorld=false`。
+实测：`devrun -Instance sp-client -Scenario scenarios\singleplayer.json`（`side=client`，无服务端进程）**5/5 PASS，exit 0**（取证 `tmp/devrun-sp`）。
+
+**它的证词边界**：单人世界里的内置服务端同样加载 `environment: "*"` 的 mod，所以它证明的是「装在同一份客户端里时生效」，
+不等于「专用服没装这个 mod 时的表现」—— 后者只能靠两台实例各自的 `/mods`（§9.2）。
+
 ---
 
 ## 10. DSH 插件层（JS）

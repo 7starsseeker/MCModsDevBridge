@@ -39,7 +39,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Name,
-    [Parameter(Mandatory = $true)][string]$Dir,
+    [string]$Dir,
 
     [ValidateSet('fabric', 'forge', 'neoforge', 'auto')]
     [string]$Loader = 'auto',
@@ -75,11 +75,19 @@ $JavaExe = Resolve-JavaExe $JavaExe
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 if ($Proxy -and $NoProxy) { throw '-Proxy 与 -NoProxy 不能同时给（要么走代理，要么强制直连）。' }
 
-if (-not (Test-Path $Dir)) { throw "服务端目录不存在：$Dir" }
-$Dir = (Resolve-Path $Dir).Path
+if ($Side -eq 'client') {
+    # 纯客户端实例没有服务端目录：-Dir 可省，给了就必须存在（留着当备注）。
+    if ($Dir -and -not (Test-Path $Dir)) { throw "服务端目录不存在：$Dir" }
+    if ($Dir) { $Dir = (Resolve-Path $Dir).Path }
+} else {
+    if (-not $Dir) { throw '需要 -Dir <服务端目录>（只有 -Side client 才能省）。' }
+    if (-not (Test-Path $Dir)) { throw "服务端目录不存在：$Dir" }
+    $Dir = (Resolve-Path $Dir).Path
+}
 
 # ---- 加载器探测：看 libraries 布局与启动壳，不猜 ----
 function Detect-Loader {
+    if (-not $Dir) { return $null }
     if (Test-Path (Join-Path $Dir 'libraries\net\neoforged\neoforge')) { return 'neoforge' }
     if (Test-Path (Join-Path $Dir 'libraries\net\minecraftforge\forge')) { return 'forge' }
     if (Test-Path (Join-Path $Dir 'libraries\net\fabricmc')) { return 'fabric' }
@@ -126,21 +134,22 @@ function Build-Args([string]$loader) {
         }
     }
 }
-$argsList = Build-Args $Loader
+$argsList = if ($Side -eq 'client') { @() } else { Build-Args $Loader }
 
 # ---- 端口：先读 server.properties，读不到再用参数/默认 ----
-$props = Join-Path $Dir 'server.properties'
+$props = if ($Dir) { Join-Path $Dir 'server.properties' } else { $null }
 $propsData = @{}
-if (Test-Path $props) {
+if ($props -and (Test-Path $props)) {
     foreach ($line in Get-Content $props -Encoding utf8) {
         if ($line -match '^\s*#' -or $line -notmatch '=') { continue }
         $kv = $line -split '=', 2
         $propsData[$kv[0].Trim()] = $kv[1].Trim()
     }
 }
-if ($GamePort -le 0) {
+if ($GamePort -le 0 -and $Side -ne 'client') {
     $GamePort = if ($propsData['server-port']) { [int]$propsData['server-port'] } else { 25565 }
 }
+if ($Side -eq 'client') { $GamePort = 0 }
 
 # 探针端口：显式给的优先；否则在 39011..39030 里挑一个没被别的实例占用的
 $instancesDir = Join-Path $root 'instances'
@@ -212,8 +221,13 @@ Write-Host "已登记 → $target"
 Write-Host "  loader=$Loader  game=$GamePort  probe=$ProbePort  side=$Side  client=$Client"
 Write-Host ''
 Write-Host '接下来：'
-Write-Host "  1) 把探针 jar 放进 $Dir\mods\（或 devrun 时用 -ProbeJar 指定）"
-Write-Host "  2) 跑：pwsh -NoProfile -File scripts\devrun.ps1 -Instance $Name -Scenario scenarios\smoke.json"
+if ($Side -eq 'client') {
+    Write-Host "  1) 把探针装进客户端游戏目录：scripts\install-probe.ps1 -Side client -Loader $Loader -Target <gamedir> -Jar <探针 jar>"
+    Write-Host "  2) 跑：pwsh -NoProfile -File scripts\devrun.ps1 -Instance $Name -Scenario <场景>"
+} else {
+    Write-Host "  1) 把探针 jar 放进 $Dir\mods\（或 devrun 时用 -ProbeJar 指定）"
+    Write-Host "  2) 跑：pwsh -NoProfile -File scripts\devrun.ps1 -Instance $Name -Scenario scenarios\smoke.json"
+}
 if ($propsData['white-list'] -eq 'true' -and $propsData['online-mode'] -eq 'false') {
     Write-Host '  3) 注意：online-mode=false + white-list=true 时白名单要写**离线 UUID**（Mojang UUID 对不上，连不进来）'
 }

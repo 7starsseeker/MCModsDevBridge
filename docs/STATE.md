@@ -31,7 +31,7 @@
 > `devrun.ps1` 收尾打印「下一步」并写进 `results.json` 的 `nextStep`（含 `onFailure`：有失败项时 `-KeepRunning` 留现场、
 > 再用 computer use 进去截图/看状态），`summary.md` 同步一段。实测：`tmp/devrun-cu` / `tmp/devrun-cu2` / `tmp/devrun-cu3`
 > （fabric smoke 5/5，退出码 0，`nextStep.computerUse=enabled`）。
->> **2026-10-20 00:55 增补（判定只靠探针/日志；截图不进判定链）**：两端探针加了 `GET /mods`（`id/version/name`，
+> **2026-10-20 00:55 增补（判定只靠探针/日志；截图不进判定链）**：两端探针加了 `GET /mods`（`id/version/name`，
 > 另给一行 `ids` 便于子串断言），客户端 `/status` 加了数值坐标 `playerPosX/Y/Z`（原来只有 `Vec3.toString()`
 > 的 `playerPos`，按子串断言要猜格式）。`scripts/devrun.ps1` 的步骤支持 `"note": "这条在验什么"`（进
 > `results.json` 与 `summary.md` 的「说明」列，不参与判定）。
@@ -59,6 +59,18 @@
 > `expect.textNot`（原始响应体不得包含子串）—— 缺一侧的证明全靠「不该出现的没出现」，否则只能人眼看。
 > `lab/fixture` **不是示例 mod**，它只证明「套件能把缺一侧变成 PASS/FAIL」；真实 mod 的握手方式各不相同，
 > 断言要按它的日志/文档来写。
+>
+> **2026-10-20 01:55 增补（单人世界入口：仅客户端 mod / 单机行为）**：客户端探针新增
+> `POST /world/singleplayer`（`name` / `mode=normal|flat` / `gamemode` / `allowCommands` / `seed` / `reuse`）与
+> `POST /world/leave` —— 客户端自己起内置服务端，专用服覆盖不到的「只有客户端那一半」终于有入口。
+> 世界目录是 `<gamedir>/saves/<levelId>`（`LevelStorageSource.createDefault` 要的是 **`saves` 这一层**，
+> 传 gamedir 会让撞名检查永远 false、给回一个不存在的 `levelId` —— 第一版就这么错过）；`reuse=true` 同名即
+> 打开老世界，反复跑不撑大 `saves`；就绪判据是客户端 `/status` 的 `inWorld`。`register-instance.ps1` 的
+> `-Dir` 在 `-Side client` 下改为可省。自检场景 `scenarios/singleplayer.json`（5 步）实测 **5/5 PASS exit 0**
+> （`tmp/devrun-sp`，`side=client`、全程没有服务端进程）。另单独实测：撞名 `sp-probe` → `sp-probe-2`（`renamed=true`）、
+> 平面世界落点 `(-7.5, 4.0, 7.5)`、普通世界固定种子 42 生效、已在世界里再创建 → `409`、非法 `mode` → `400`。
+> **证词边界**：单人世界的内置服务端同样加载 `environment: "*"` 的 mod ⇒ 它证明「装在同一份客户端里时生效」，
+> 不等于「专用服没装这个 mod 时的表现」（那要靠两台实例各自的 `/mods`）。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
 

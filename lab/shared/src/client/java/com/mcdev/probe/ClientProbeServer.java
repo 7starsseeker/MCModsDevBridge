@@ -24,6 +24,7 @@ import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundSignUpdatePacket;
@@ -33,6 +34,13 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BaseCommandBlock;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.LevelSettings;
+import net.minecraft.world.level.WorldDataConfiguration;
+import net.minecraft.world.level.levelgen.WorldDimensions;
+import net.minecraft.world.level.levelgen.WorldOptions;
+import net.minecraft.world.level.levelgen.presets.WorldPresets;
+import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.CommandBlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
@@ -52,7 +60,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -89,6 +99,9 @@ public final class ClientProbeServer {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
             route("/status", ClientProbeServer::handleStatus, "core");
             route("/connect", ClientProbeServer::handleConnect, "net");
+            // ---- 单人世界：客户端自己开世界（内置服务端），仅客户端 mod / 单机行为只在这里能验 ----
+            route("/world/singleplayer", ClientProbeServer::handleWorldSingleplayer, "world");
+            route("/world/leave", ClientProbeServer::handleWorldLeave, "world");
             route("/log/tail", ClientProbeServer::handleLogTail, "core");
             route("/ui/snapshot", ClientProbeServer::handleUiSnapshot, "client_ui");
             route("/ui/click", ClientProbeServer::handleUiClick, "client_ui");
@@ -468,6 +481,144 @@ public final class ClientProbeServer {
         }
     }
 
+
+    /**
+     * 开一个单人世界：客户端自己起内置服务端。
+     *
+     * <p>为什么需要：专用服只能验证「装进服务端的那一半」。而「只在客户端生效的 mod」和「单机里的行为」
+     * 只有单人世界能验——单人世界里内置服务端也会加载 {@code environment="*"} 的 mod，所以它证明的是
+     * 「装在同一份客户端里时 mod 生效」，不等于「专用服没装这个 mod 时的表现」。
+     *
+     * <p>参数（query）：{@code name}（世界名，默认 {@code mcdev}）、{@code mode=normal|flat}
+     * （flat 用 FLAT_ALL_DIMENSIONS 预设：平地、生成快，适合测试）、{@code gamemode=survival|creative|
+     * adventure|spectator}（默认 creative）、{@code allowCommands=true|false}（默认 true）、
+     * {@code seed}（可选；不给就随机）。世界名已存在时自动加 {@code -2}/{@code -3} 后缀，
+     * 返回值 {@code renamed=true} 表示换过名字——调用方据此知道没有复用老世界目录。
+     *
+     * <p>返回后世界是异步加载的：用 {@code /status} 的 {@code inWorld} 轮询等它就绪。
+     */
+    private static void handleWorldSingleplayer(HttpExchange ex) throws IOException {
+        if (!authorized(ex)) {
+            return;
+        }
+        try {
+            String requested = strQuery(ex, "name", "mcdev");
+            if (requested.isEmpty()) {
+                throw new IllegalArgumentException("name must not be empty");
+            }
+            String mode = strQuery(ex, "mode", "normal").toLowerCase(Locale.ROOT);
+            if (!mode.equals("normal") && !mode.equals("flat")) {
+                throw new IllegalArgumentException("mode must be 'normal' or 'flat', got '" + mode + "'");
+            }
+            String gamemode = strQuery(ex, "gamemode", "creative").toLowerCase(Locale.ROOT);
+            GameType gameType = switch (gamemode) {
+                case "survival" -> GameType.SURVIVAL;
+                case "creative" -> GameType.CREATIVE;
+                case "adventure" -> GameType.ADVENTURE;
+                case "spectator" -> GameType.SPECTATOR;
+                default -> throw new IllegalArgumentException("unknown gamemode '" + gamemode + "'");
+            };
+            boolean allowCommands = !"false".equalsIgnoreCase(strQuery(ex, "allowCommands", "true"));
+            boolean reuse = "true".equalsIgnoreCase(strQuery(ex, "reuse", "false"));
+            String seedRaw = strQuery(ex, "seed", "");
+            boolean hasSeed = seedRaw != null && !seedRaw.isEmpty();
+            long seed = 0L;
+            if (hasSeed) {
+                try {
+                    seed = Long.parseLong(seedRaw);
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("seed must be a number, got '" + seedRaw + "'");
+                }
+            }
+            final boolean useSeed = hasSeed;
+            final long seedValue = seed;
+            final String modeValue = mode;
+            final String gamemodeValue = gamemode;
+            Map<String, Object> data = onClient(() -> {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.level != null) {
+                    throw new IllegalStateException("already in a world (" + mc.level.dimension().identifier() + ")");
+                }
+                // 世界目录是 <gamedir>/saves/<levelId>（LevelStorageSource.createDefault 要的是 saves 这一层，
+                // 传 gamedir 的话 levelExists 永远为 false，撞名时会给出错误的 levelId）。
+                LevelStorageSource storage = LevelStorageSource.createDefault(mc.gameDirectory.toPath().resolve("saves"));
+                // reuse=true 时优先打开同名的老世界（同一份测试数据反复用，不在 saves 里越堆越多）；
+                // 没有才新建。新建撞名时自动加 -2/-3 后缀。
+                boolean openedExisting = reuse && storage.levelExists(requested);
+                String levelId = requested;
+                if (!openedExisting) {
+                    for (int i = 2; storage.levelExists(levelId) || !storage.isNewLevelIdAcceptable(levelId); i++) {
+                        if (i > 999) {
+                            throw new IllegalStateException("cannot find a free world id derived from '" + requested + "'");
+                        }
+                        levelId = requested + "-" + i;
+                    }
+                }
+                final String openId = levelId;
+                WorldOptions options = null;
+                if (openedExisting) {
+                    mc.createWorldOpenFlows().openWorld(openId, () -> ProbeLog.LOGGER.warn("mcdev probe: opening world '{}' failed", openId));
+                } else {
+                    LevelSettings settings = new LevelSettings(levelId, gameType,
+                            LevelSettings.DifficultySettings.DEFAULT, allowCommands, WorldDataConfiguration.DEFAULT);
+                    if (useSeed) {
+                        options = new WorldOptions(seedValue, !modeValue.equals("flat"), false);
+                    } else {
+                        options = modeValue.equals("flat")
+                                ? WorldOptions.testWorldWithRandomSeed()
+                                : WorldOptions.defaultWithRandomSeed();
+                    }
+                    Function<HolderLookup.Provider, WorldDimensions> dimensions = modeValue.equals("flat")
+                            ? WorldPresets::createTestWorldDimensions
+                            : WorldPresets::createNormalWorldDimensions;
+                    mc.createWorldOpenFlows().createFreshLevel(levelId, settings, options, dimensions, null);
+                }
+                Map<String, Object> d = new LinkedHashMap<>();
+                d.put("levelId", levelId);
+                d.put("openedExisting", openedExisting);
+                d.put("renamed", !levelId.equals(requested));
+                d.put("mode", modeValue);
+                d.put("gamemode", gamemodeValue);
+                d.put("allowCommands", allowCommands);
+                d.put("seed", options == null ? null : options.seed());
+                d.put("worldDir", storage.getLevelPath(levelId).toString());
+                return d;
+            });
+            ok(ex, data);
+        } catch (IllegalStateException e) {
+            error(ex, 409, "world/singleplayer failed: " + e.getMessage());
+        } catch (IllegalArgumentException e) {
+            error(ex, 400, "world/singleplayer failed: " + e.getMessage());
+        } catch (Exception e) {
+            error(ex, 500, "world/singleplayer failed: " + e);
+        }
+    }
+
+    /** 离开当前世界回到标题界面（单人世界会先存档）。用于一条场景里连开多个世界。 */
+    private static void handleWorldLeave(HttpExchange ex) throws IOException {
+        if (!authorized(ex)) {
+            return;
+        }
+        try {
+            Map<String, Object> data = onClient(() -> {
+                Minecraft mc = Minecraft.getInstance();
+                Map<String, Object> d = new LinkedHashMap<>();
+                if (mc.level == null) {
+                    d.put("left", false);
+                    d.put("reason", "not in a world");
+                    return d;
+                }
+                String was = mc.level.dimension().identifier().toString();
+                mc.disconnectWithProgressScreen();
+                d.put("left", true);
+                d.put("was", was);
+                return d;
+            });
+            ok(ex, data);
+        } catch (Exception e) {
+            error(ex, 500, "world/leave failed: " + e);
+        }
+    }
 
     private static void handlePlayerInventory(HttpExchange ex) throws IOException {
         if (!authorized(ex)) {

@@ -1,0 +1,50 @@
+{
+  "name": "singleplayer",
+  "description": "客户端自己开单人世界（内置服务端）再退出：验证 /world/singleplayer 与 /world/leave，以及客户端 /status 的 inWorld/dimension。整条场景只打客户端探针，不需要专用服（实例 side=client）。",
+  "steps": [
+    {
+      "id": "world-create",
+      "target": "client",
+      "method": "POST",
+      "path": "/world/singleplayer?mode=flat&name=mcdev-sp&reuse=true",
+      "expect": {
+        "status": 200,
+        "contains": { "data.mode": "flat" },
+        "json": { "data.renamed": false }
+      }
+    },
+    {
+      "id": "world-ready",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "retry": { "times": 60, "intervalMs": 500 },
+      "expect": { "status": 200, "json": { "data.inWorld": true } }
+    },
+    {
+      "id": "world-dimension",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "expect": {
+        "status": 200,
+        "json": { "data.dimension": "minecraft:overworld", "data.linked": true }
+      }
+    },
+    {
+      "id": "world-leave",
+      "target": "client",
+      "method": "POST",
+      "path": "/world/leave",
+      "expect": { "status": 200, "json": { "data.left": true } }
+    },
+    {
+      "id": "world-left",
+      "target": "client",
+      "method": "GET",
+      "path": "/status",
+      "retry": { "times": 40, "intervalMs": 500 },
+      "expect": { "status": 200, "json": { "data.inWorld": false } }
+    }
+  ]
+}

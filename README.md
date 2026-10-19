@@ -106,6 +106,31 @@ pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端
 - `side` 决定哪一端在场：`server`（只服）/ `client`（只客，没有服务端可起）/ `both`。场景里出现对端不存在的用例时，
   `devrun` 在**加载阶段**就报错，不会跑一半才发现。
 
+### 单人世界：客户端自己开世界
+
+「只在客户端生效的 mod」和「单机里的行为」在专用服上验不了 —— 单人世界由客户端自己起内置服务端。
+客户端探针提供两个入口（通用能力，不针对任何 mod）：
+
+| 端点 | 作用 |
+|---|---|
+| `POST /world/singleplayer?name=<id>&mode=normal\|flat&gamemode=survival\|creative&allowCommands=…&seed=…&reuse=true` | 新建或打开单人世界；返回 `levelId` / `worldDir` / `renamed` / `openedExisting` |
+| `POST /world/leave` | 存档并回标题界面 |
+
+- `mode=flat` 用 `FLAT_ALL_DIMENSIONS` 预设：平地、生成快，适合测试；`normal` 是普通地形。
+- `reuse=true` 时同名世界存在就**打开**它（同一份数据反复用，不在 `saves` 里越堆越多）；否则新建，
+  撞名自动加 `-2` / `-3`，返回 `renamed: true`。
+- 创建是异步的：用客户端 `/status` 的 `inWorld` 轮询等它就绪（`scenarios/singleplayer.json` 就是范例）。
+- 单人世界里的内置服务端也会加载 `environment: "*"` 的 mod ⇒ 它证明的是「装在同一份客户端里时生效」，
+  **不等于**「专用服没装这个 mod 时的表现」。后者要靠两台实例（只看得到各自 `/mods`）。
+
+```powershell
+# 纯客户端实例（没有服务端可起，-Dir 可省）
+pwsh -NoProfile -File scripts\register-instance.ps1 -Name sp -Side client -Loader fabric `
+     -Client standalone -ClientRoot '<HMCL_HOME>' -ClientVersion '26.3-Fabric' `
+     -ClientGameDir 'T:\你的客户端目录'
+pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\singleplayer.json
+```
+
 ### 环境解析约定
 
 脚本不假设任何固定路径，`scripts/lib/Env.ps1` 统一解析：
@@ -127,7 +152,7 @@ pwsh -NoProfile -File scripts\register-instance.ps1 -Name local -Dir '<服务端
 | `lab/fabric/` `lab/forge/` `lab/neoforge/` | 三家加载器的构建骨架与入口类 |
 | `scripts/` | `devrun` 编排、实例登记、部署向导、探针装卸（`install-probe` / `remove-probe`）、打包、DSH 插件安装 |
 | `scripts/lib/` | `Env.ps1`（java/代理解析）、`Launch.ps1`（按版本清单拼客户端命令行） |
-| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities`；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
+| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities` / `singleplayer`；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
 | `tools/dsh-plugin/` | DSH 插件（`mcdev_devrun` / `mcdev_scenarios`） |
 | `docs/` | 可行性评估、逐阶段移植记录、部署拓扑、状态总览 |
 | `docs/examples/` | **参考资料**，不是能力清单：拿一个具体 mod 演示「功能 → 可断言步骤」怎么写（见下节） |
