@@ -658,6 +658,36 @@ platform/<loader>/
 「客户端加载器: forge（服务端 fabric，跨族组合）」，运行期打印「客户端加载器：forge（实例声明 forge / 服务端 fabric）」+
 跨族提示行且**不**误报「与实例声明不一致」，`scenarios/smoke.json` 5/5 PASS（`tmp/devrun-cross-split`）。
 
+### 9.6 「任意一端即可」的样本 + 反向跨族 + 连不上时先看服务端日志（2026-10-20 实测）
+
+四类 mod 的最后一块是「任意一端即可」。`lab/fixture-server/`（Fabric，3.1 KB）的 `fabric.mod.json` 是
+`"environment": "server"`、**只有 server 入口、没有 client 入口**：`onInitializeServer` 记
+`[mcdev_fixture_server] server side active`，`ServerPlayConnectionEvents.JOIN` 记 `joined (server-only half) <player>`，
+有玩家在线的第 20 tick 记 `tick probe alive (server-only)`。
+
+| 场景 | 实例 | 断言 | 实测 |
+|---|---|---|---|
+| `scenarios/fixture-server-only.json`（4 步） | `side=both`，服务端装了它、客户端没有 | 服务端 `/mods` contains + 客户端 `/mods` notContains + 服务端两条日志 | **4/4 PASS**（`tmp/devrun-fix-server-only`） |
+
+这四块合起来覆盖四类 mod 的「装在哪一端」语义：`lab/fixture`（两端都必须，缺一侧 FAIL）、
+`lab/fixture-client`（只有客户端，服务端 notContains）、`lab/fixture-server`（只有服务端，客户端 notContains）、
+以及用真实 mod 做的「任意一端」实测（`/mods` 两侧各看一眼）。
+
+**反向跨族**：此前的跨族只验过「fabric 服 + forge 客」。补上反方向 `instances/cross-cf.json`
+（`loader: forge` 的 `<MC_ROOT>\Server1` + `client.loader: fabric` 的 `26.3-Fabric` 独立客户端）：
+`scenarios/smoke.json` **5/5 PASS exit 0**（`tmp/devrun-cross-cf3`），运行期打印
+「客户端加载器：fabric（实例声明 fabric / 服务端 forge）」+ 跨族提示 ⇒ 两个方向都成立，
+加载器确实不进协议层（§9.2 的结论不是单向巧合）。
+
+**这一节最值钱的其实是一次失败**：反向跨族第一次跑挂了 90 s，报「客户端在 90s 内没有进入世界」，
+当时看起来像「forge 服不收 fabric 客」，实际服务端日志写着
+`Disconnecting mcdev (...): You are not white-listed on this server!` —— 那台服的
+`white-list=true` 且 `online-mode=false`，而离线模式的白名单要写**离线 UUID**（`OfflinePlayer:名字` 的 MD5）。
+所以 `devrun` 的 `Wait-Player` 超时后现在会把服务端日志里最后几条断开原因抄出来，并单独提示白名单这条
+（`white-list` 命中时）。反例实测：客户端用户名换成 `intruder` 后超时输出里直接带
+`Disconnecting intruder (...): You are not white-listed on this server!` + 白名单提示（`tmp/devrun-wl-probe`，exit 1）。
+教训写在这里：**「连不上」先看服务端日志，别先怀疑加载器**。
+
 ---
 
 ## 10. DSH 插件层（JS）

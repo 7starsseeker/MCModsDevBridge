@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "mcdev_fixture_server",
+  "version": "${version}",
+  "name": "mcdev fixture (server only)",
+  "description": "Minimal server-only fixture for the mcdev probe suite: proves that a mod whose half exists only on the server still works when the client does not have it at all.",
+  "authors": ["mcdev"],
+  "license": "Apache-2.0",
+  "environment": "server",
+  "entrypoints": {
+    "server": [
+      "com.mcdev.fixture.server.ServerOnlyFixture"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

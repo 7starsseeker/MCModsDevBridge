@@ -1,0 +1,41 @@
+{
+  "name": "fixture-server-only",
+  "description": "仅服务端 mod（lab/fixture-server，environment=server）只装服务端也生效：客户端根本没有它，服务端这一半照样收到 JOIN、照样 tick ⇒ 「任意一端即可」这一类里服务端那一极成立。",
+  "player": "mcdev",
+  "steps": [
+    {
+      "id": "server-has-fixture",
+      "target": "server",
+      "method": "GET",
+      "path": "/mods",
+      "expect": { "contains": { "data.ids": "mcdev_fixture_server" } },
+      "note": "服务端加载器确实加载了它（/mods 是加载器给的清单，不是探针猜的）"
+    },
+    {
+      "id": "client-lacks-fixture",
+      "target": "client",
+      "method": "GET",
+      "path": "/mods",
+      "expect": { "notContains": { "data.ids": "mcdev_fixture_server" } },
+      "note": "environment=server 的 mod 在客户端连加载都不加载，这是它的语义"
+    },
+    {
+      "id": "server-log-joined",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=200",
+      "retry": { "times": 30, "intervalMs": 500 },
+      "expect": { "text": [ "joined (server-only half)" ] },
+      "note": "客户端没有这一半，服务端仍然收到了 JOIN —— 不需要对端配合"
+    },
+    {
+      "id": "server-log-tick",
+      "target": "server",
+      "method": "GET",
+      "path": "/log/tail?n=200",
+      "retry": { "times": 20, "intervalMs": 500 },
+      "expect": { "text": [ "tick probe alive (server-only)" ] },
+      "note": "不只是加载，tick 也在跑"
+    }
+  ]
+}

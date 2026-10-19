@@ -162,12 +162,13 @@ pwsh -NoProfile -File scripts\devrun.ps1 -Instance sp -Scenario scenarios\single
 | `lab/fabric/` `lab/forge/` `lab/neoforge/` | 三家加载器的构建骨架与入口类 |
 | `scripts/` | `devrun` 编排、实例登记、部署向导、探针装卸（`install-probe` / `remove-probe`）、打包、DSH 插件安装 |
 | `scripts/lib/` | `Env.ps1`（java/代理解析）、`Launch.ps1`（按版本清单拼客户端命令行） |
-| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities` / `singleplayer` / `fixture-*`；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
+| `scenarios/` | 场景 JSON（`smoke` / `server-only` / `actions` / `capabilities` / `singleplayer` / `fixture-*`（三端组合的样本场景）；`capabilities` 是套件自身能力的自检，含跨维度读写、客户端聊天/actionbar 断言、日志子串断言） |
 | `tools/dsh-plugin/` | DSH 插件（`mcdev_devrun` / `mcdev_scenarios`） |
 | `docs/` | 可行性评估、逐阶段移植记录、部署拓扑、状态总览 |
 | `docs/examples/` | **参考资料**，不是能力清单：拿一个具体 mod 演示「功能 → 可断言步骤」怎么写（见下节） |
 | `lab/fixture/` | **测试样本 mod（Fabric，6.8 KB）**：唯一用途是证明「两端都必须有的 mod」能被断言 —— 服务端等握手、客户端发握手，缺一侧就写日志。不是示例 mod，也不是能力清单 |
 | `lab/fixture-client/` | **测试样本 mod（Fabric，3.0 KB，`environment: "client"`）**：证明「只有客户端一半」的 mod 在单人世界/连服时照样生效，而服务端 `/mods` 里根本没有它 |
+| `lab/fixture-server/` | **测试样本 mod（Fabric，3.1 KB，`environment: "server"`）**：证明「只有服务端一半」的 mod 在客户端根本没有它时照样收到 JOIN、照样 tick |
 
 先读 [docs/STATE.md](docs/STATE.md) 了解当前进度；[docs/architecture.md](docs/architecture.md) 讲整体设计；[docs/deployment-topology.md](docs/deployment-topology.md) 讲实例与端口分配。
 

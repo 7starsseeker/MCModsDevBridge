@@ -1,0 +1,36 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+// 「只有服务端一半」的最小 fixture：存在的唯一目的，是把「只装服务端也生效、
+// 客户端根本没有它」这件事变成可断言的事实（四类 mod 里的「任意一端即可」）。
+// fabric.mod.json 里 environment 是 "server"、只有 server 入口、没有 client 入口，
+// 所以它天然不进客户端；客户端那一侧只能从 /mods 的 notContains 证明「没有」。
+// 它不提供任何被测试的功能，也不该被当成示例 mod —— 参考写法在 docs/examples/ 下。
+base {
+	archivesName = 'mcdev_fixture_server'
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}

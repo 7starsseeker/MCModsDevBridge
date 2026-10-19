@@ -85,6 +85,21 @@
 > （`loader: fabric` + `client.loader: forge`）：预检打印「客户端加载器: forge（服务端 fabric，跨族组合）」，
 > 运行期打印「客户端加载器：forge（实例声明 forge / 服务端 fabric）」+ 跨族提示且不误报不一致，
 > `scenarios/smoke.json` **5/5 PASS**（`tmp/devrun-cross-split`）。
+>
+> **2026-10-20 02:25 增补（四类 mod 全齐；反向跨族也通了；连不上先看服务端日志）**：新增
+> `lab/fixture-server/`（Fabric，3.1 KB，`"environment": "server"`、只有 server 入口）——「任意一端即可」的
+> 服务端那一极。`scenarios/fixture-server-only.json`（4 步：服务端 `/mods` contains、客户端 notContains、
+> 服务端 `joined (server-only half)` / `tick probe alive (server-only)`）实测 **4/4 PASS**（`tmp/devrun-fix-server-only`）。
+> 至此四类 mod 的「装在哪一端」都有样本与断言：`lab/fixture`（两端都必须）、`lab/fixture-client`（只客户端）、
+> `lab/fixture-server`（只服务端）、真实 mod 的 `/mods` 双侧对照。
+> 反向跨族也实测了：`instances/cross-cf.json`（`loader: forge` 的 `<MC_ROOT>\Server1` + `client.loader: fabric`
+> 的 `26.3-Fabric` 独立客户端）→ `scenarios/smoke.json` **5/5 PASS exit 0**（`tmp/devrun-cross-cf3`），
+> 运行期打印「客户端加载器：fabric（实例声明 fabric / 服务端 forge）」⇒ 两个方向的跨族都成立。
+> **这一节最值钱的是一次失败**：反向跨族首跑挂在「90s 没进世界」，看着像 forge 不收 fabric 客，实际服务端日志是
+> `You are not white-listed on this server!`（`white-list=true` + `online-mode=false` ⇒ 白名单要写**离线 UUID**，
+> `mcdev` 的离线 UUID 是 `<OFFLINE_UUID>`）。`devrun` 的 `Wait-Player` 超时后现在会抄
+> 服务端日志最后几条断开原因、并对白名单单独提示；反例实测（用户名 `intruder`）输出里直接带断开原因 +
+> 提示（`tmp/devrun-wl-probe`，exit 1）。教训：**「连不上」先看服务端日志，别先怀疑加载器**。
 
 ## 新会话从这里读（交接快照 2026-10-19 22:57）
 

@@ -304,7 +304,25 @@ function Wait-Player([int]$TimeoutSec) {
         }
         Start-Sleep -Seconds 2
     }
-    throw "客户端在 ${TimeoutSec}s 内没有进入世界（/status.player 一直为空）"
+    # 「连不上」的原因几乎总在服务端日志里（白名单、正版验证、mod 不匹配……）。
+    # 只报「客户端没进世界」等于让人从头猜，所以把服务端侧最后几条断开原因抄过来。
+    $reason = $null
+    $serverLog = Join-Path $EvidenceDir 'server.out'
+    if (Test-Path $serverLog) {
+        $hits = Select-String -Path $serverLog -Pattern 'Disconnecting .*: |lost connection: |Incompatible|not white-listed|Failed to verify' -Encoding utf8 |
+            Select-Object -Last 3
+        if ($hits) { $reason = ($hits | ForEach-Object { '    ' + $_.Line.Trim() }) -join "`n" }
+    }
+    $msg = "客户端在 ${TimeoutSec}s 内没有进入世界（/status.player 一直为空）"
+    if ($reason) {
+        Write-Host ''
+        Write-Host '  服务端日志里的原因：'
+        Write-Host $reason
+    }
+    if ($reason -match 'white-list') {
+        Write-Host '  提示：服务端开了白名单。离线登录（online-mode=false）时白名单要写**离线 UUID**，不是玩家名。'
+    }
+    throw $msg
 }
 
 # 客户端启动时先闪过的几个一次性界面（图形警告、无障碍向导……）挡在主菜单前面。
