@@ -98,6 +98,12 @@ This repository is also a DSH plugin package (`package.json` declares `dsh.bundl
 dsh plugin add github:7starsseeker/MCModsDevBridge
 ```
 
+Or install the published npm package — a prebuilt tarball, so it needs no build approval step:
+
+```powershell
+dsh plugin add mcmodsdevbridge
+```
+
 `scripts/`, `scenarios/` and `tools/` are installed together with the package, and **the package root is the workspace root** — the plugin finds it on its own (you can also point `MCDEV_ROOT` somewhere else). Restart DSH after installing. The package still contains **no** Minecraft server / client / loader files: register an instance as described above, or point `-ProbeJar` at a probe jar.
 
 ## Where the client comes from

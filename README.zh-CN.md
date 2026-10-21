@@ -101,6 +101,12 @@ pwsh -NoProfile -File scripts\install-dsh-plugin.ps1 -Mode install
 dsh plugin add github:7starsseeker/MCModsDevBridge
 ```
 
+也可以直接装已发布的 npm 包 —— 预构建产物，不需要再走构建授权那一步：
+
+```powershell
+dsh plugin add mcmodsdevbridge
+```
+
 `scripts/`、`scenarios/`、`tools/` 随包一起装进来，**包根就是工作区根**，插件自己会找到它
 （也可以用 `MCDEV_ROOT` 指到别处）。装完重启 DSH。这个包**不带** Minecraft 服务端 / 客户端 / 加载器
 文件 —— 装完仍要按上面的「快速开始」登记实例，或用 `-ProbeJar` 指定探针 jar。

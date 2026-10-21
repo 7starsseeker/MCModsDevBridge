@@ -174,6 +174,20 @@
 > `selftest.mjs` 增了 9 条包清单断言（name/patch/main/exports/files 一致性 + 包外 cwd 兜底）。两个已知边界：
 > ① 包名含大写，**npm 官方仓库会拒**（`dsh plugin add github:…` 与市场收录不受影响）；② 仓库还需在 GitHub
 > 加 `dsh-plugin` topic、且建满 1 天，市场 CI 才会放行条目 PR。
+> **2026-10-21 19:5x 增补（市场条目 PR 已提；上面那两个已知边界都已解）**：条目 PR
+> **awesome-dsh-plugin/awesome-dsh-plugin#8478**（`Add 7starsseeker/MCModsDevBridge`）已开，只加一个文件
+> `data/plugins/7starsseeker__MCModsDevBridge.yml`（+6/−0，单 commit `df2425d`），CI `check` **pass 11m21s**
+> （awesome-lint / README 与 data/plugins 一致 / entry-path tests / Build 全 success），PR 状态 OPEN · MERGEABLE。
+> 条目正文由市场自己的 `scripts/lib/entries.mjs` 生成并校验（`dumpEntry` + `validateEntries` → `problems: none`），
+> 推到 fork 分支 `add-mcmodsdevbridge` 后回读校验：本地与远端**逐字节相同**（都是 747 B）。`category: dev`；
+> description 的 `en`/`zh` 都写了（含 `: ` 所以按市场要求加了引号）。两个边界怎么解的：
+> ① npm 包名早已是全小写 **`mcmodsdevbridge`**，`npm view` 实测 latest **1.0.3**，所以「大写被拒」这条不成立了
+> （受影响的只是包名与仓库名大小写不一致而已，市场按 url 收录、不看包名）；
+> ② `dsh-plugin` topic 已在仓库上、建仓 `2026-10-19T19:19:23Z` 已满 1 天，市场 CI 的 `MIN_AGE_DAYS = 1`
+> 与本仓 git tree 只有 **1** 个 `package.json`（根，`dsh.bundle` → `./cordis.patch.yml`）相对 `MAX_TREE_PKGS = 40`，
+> 树枚举不可能漏。**还没出现在市场列表里**：合并后 `main` 上由脚本重生成两份 README 才会收录，
+> 在那之前别删 fork 分支 `7starsseeker/awesome-dsh-plugin:add-mcmodsdevbridge`。README 两份也各补了一行
+> npm 安装法（`dsh plugin add mcmodsdevbridge`，预构建产物不走 allowBuilds 授权）。
 > **2026-10-20 03:05 增补（上面「还没证」的那些，现在都有证据了）**：Forge/NeoForge 的独立客户端真机跑通，
 > 三条 `fixture-*` 场景各跑一遍（客户端 gamedir `tmp\client-forge-fixture` / `tmp\client-neoforge-fixture`，
 > 客户端版本 `26.3-Forge-test` / `26.3-NeoForge-test`）：
