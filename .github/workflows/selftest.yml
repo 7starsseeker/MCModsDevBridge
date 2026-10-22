@@ -1,0 +1,42 @@
+name: selftest
+
+# 只跑插件自测：不碰游戏、不下载任何东西、不读实例登记。
+# 两个脚本合起来断言「注册逻辑 + 包元数据 + patch 一致性」与「skills 知识层没坏」。
+# 它们**不**证明 DSH 运行时集成 —— 那要真装进 DSH 并重启才算数。
+#
+# 版本矩阵覆盖 package.json 的 engines 下限（>=20）和发布时用的版本（22，
+# 见 publish.yml），所以「engines 说支持 20」这句话是有 CI 撑着的。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selftest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: 插件注册与包元数据（tools/dsh-plugin/selftest.mjs）
+        run: node tools/dsh-plugin/selftest.mjs
+
+      - name: skills 知识层（tools/dsh-plugin/mcdev-devrun/selftest-skills.mjs）
+        run: node tools/dsh-plugin/mcdev-devrun/selftest-skills.mjs
