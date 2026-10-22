@@ -1,4 +1,5 @@
 # MC Mods Dev Bridge
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 [![license: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen.svg)](https://nodejs.org)
 [![DSH plugin](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4B6BFB.svg)](https://github.com/deepseek-ai/deepseek-harness)
@@ -10,7 +11,11 @@
 [![skills](https://img.shields.io/badge/skills-11-4D6BFE.svg)](./tools/dsh-plugin/mcdev-devrun/skills)
 [![selftest](https://img.shields.io/badge/selftest-PASS-brightgreen.svg)](./tools/dsh-plugin/selftest.mjs)
 [![version](https://img.shields.io/github/v/tag/7starsseeker/MCModsDevBridge?label=version&style=flat)](https://github.com/7starsseeker/MCModsDevBridge/tags)
+[![npm](https://img.shields.io/npm/v/mcmodsdevbridge?label=npm&style=flat)](https://www.npmjs.com/package/mcmodsdevbridge)
+[![last commit](https://img.shields.io/github/last-commit/7starsseeker/MCModsDevBridge)](https://github.com/7starsseeker/MCModsDevBridge/commits/main)
+[![dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](./package.json)
 [![stars](https://img.shields.io/github/stars/7starsseeker/MCModsDevBridge?style=flat)](https://github.com/7starsseeker/MCModsDevBridge/stargazers)
+[![issues](https://img.shields.io/github/issues/7starsseeker/MCModsDevBridge)](https://github.com/7starsseeker/MCModsDevBridge/issues)
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
 > **English** | [简体中文](README.zh-CN.md) | [Status](docs/STATE.md) | [Architecture](docs/architecture.md) | [Deployment topology](docs/deployment-topology.md)
 
